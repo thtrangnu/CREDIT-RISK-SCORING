@@ -1,0 +1,15 @@
+# Tầng ML (training + explain). Pin chặn trên có chủ đích:
+#
+#   numpy<2.5  — BẮT BUỘC. shap -> numba, và numba hiện chỉ hỗ trợ NumPy <= 2.4.
+#                Với numpy 2.5, `import shap` chết ngay:
+#                "ImportError: Numba needs NumPy 2.4 or less".
+#
+# Cài: python -m venv .venv && .venv/bin/pip install -r ml/requirements.txt
+numpy>=1.26,<2.5
+pandas>=2.2,<3.0
+scikit-learn>=1.5,<2.0
+lightgbm>=4.5,<5.0
+shap>=0.46,<0.50
+pyarrow>=17
+pyyaml>=6.0
+pytest>=8.0

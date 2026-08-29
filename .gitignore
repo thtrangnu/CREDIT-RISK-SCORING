@@ -1,0 +1,27 @@
+.DS_Store
+__pycache__/
+*.pyc
+.pytest_cache/
+.ipynb_checkpoints/
+
+data/
+
+# Artifact: commit phần NHẸ + kể được chuyện (README/model card link tới), bỏ
+# phần nặng và tái tạo được bằng cách chạy lại pipeline.
+ml/artifacts/*
+!ml/artifacts/.gitkeep
+!ml/artifacts/model_card.md
+!ml/artifacts/metrics_summary.json
+!ml/artifacts/shap_global_importance.csv
+!ml/artifacts/feature_names.json
+
+*.egg-info/
+.venv/
+venv/
+
+.env
+node_modules/
+frontend/dist/
+backend/.pytest_cache/
+mysql_data/
+
