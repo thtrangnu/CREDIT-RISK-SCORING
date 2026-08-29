@@ -1,0 +1,16 @@
+n_folds: 5
+seed: 42
+
+lgbm:
+  objective: binary
+  metric: auc
+  learning_rate: 0.02
+  num_leaves: 31
+  feature_fraction: 0.8
+  bagging_fraction: 0.8
+  bagging_freq: 1
+  min_child_samples: 50
+  lambda_l2: 1.0
+  verbosity: -1
+  num_boost_round: 5000
+  early_stopping_rounds: 200
