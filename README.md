@@ -1,256 +1,253 @@
-# Home Credit Default Risk — Credit Scoring end-to-end
+# Home Credit — chấm điểm rủi ro tín dụng
 
-Chấm điểm rủi ro vỡ nợ trên bộ [Home Credit Default Risk](https://www.kaggle.com/c/home-credit-default-risk)
-(Kaggle, 7 bảng quan hệ, 307.511 applicant), từ feature engineering đa bảng đến một API
-chấm điểm có audit trail và một giao diện giải trình được từng quyết định.
+Project cá nhân làm trên bộ [Home Credit Default Risk](https://www.kaggle.com/c/home-credit-default-risk)
+của Kaggle: 7 bảng quan hệ, 307 nghìn hồ sơ vay, dự đoán ai sẽ vỡ nợ.
 
-> **Ở tỉ lệ duyệt 70%, tỉ lệ vỡ nợ trong nhóm được duyệt giảm từ 8.07% xuống 3.51%**
-> — giảm **56.5%** tổn thất tín dụng, chặn được **69.5%** tổng số ca vỡ nợ.
-> *(tính trên out-of-fold đã hiệu chỉnh, không phải in-sample)*
+Mình làm full từ đầu đến cuối: gộp 7 bảng thành feature, train LightGBM, hiệu chỉnh xác suất,
+giải thích bằng SHAP, rồi đóng gói thành API có ghi log và một cái web để bấm thử.
 
----
+Con số mình quan tâm nhất không phải AUC mà là cái này: **nếu chỉ duyệt 70% hồ sơ tốt nhất thì
+tỉ lệ vỡ nợ trong nhóm được duyệt tụt từ 8.07% xuống 3.51%**. Tức là giảm được hơn một nửa
+tổn thất, và chặn được gần 70% số ca vỡ nợ ngay ở cửa.
 
 ## Kết quả
 
-| | Baseline | Sau feature engineering | |
+Sau khi gộp cả 7 bảng thay vì chỉ dùng bảng chính:
+
+| | Chỉ `application_train` | Gộp 7 bảng | |
 |---|---|---|---|
-| **AUC** (OOF) | 0.76076 | **0.78757** | **+0.02681** |
-| **Gini** | 0.52152 | 0.57514 | +0.05362 |
-| Số feature | 120 | 709 | 7 bảng |
+| AUC (OOF) | 0.76076 | 0.78757 | +0.02681 |
+| Gini | 0.52152 | 0.57514 | +0.05362 |
+| Số feature | 120 | 709 | |
 
-Baseline và bản engineered dùng **cùng fold split** (cùng seed, cùng `n_folds`, cùng thứ tự
-dòng), nên delta đo đúng phần lift đến từ feature engineering chứ không lẫn với may rủi của
-lần chia fold khác.
+Hai lần train dùng chung một cách chia fold (cùng seed, cùng thứ tự dòng), nên phần chênh
+lệch đúng là do feature chứ không phải do hên xui lúc chia dữ liệu.
 
-### Calibration
+### Về calibration
 
-Trong lending, thứ hạng đúng là chưa đủ — con số PD phải *đúng nghĩa xác suất* thì mới định
-giá và đặt cutoff được.
+Xếp hạng đúng thôi chưa đủ. Muốn đặt ngưỡng duyệt hay tính giá vốn rủi ro thì con số PD phải
+đúng nghĩa xác suất, chứ không chỉ là điểm số để sort.
 
-| | Trước hiệu chỉnh | Sau isotonic |
+| | Trước | Sau isotonic |
 |---|---|---|
 | Brier | 0.06598 | 0.06589 |
-| ECE (uniform-10 bin) | 0.00417 | **0.00060** |
-| ECE (quantile-50 bin) | 0.00597 | 0.00201 |
+| ECE (10 bin đều) | 0.00417 | 0.00060 |
+| ECE (50 bin theo phân vị) | 0.00597 | 0.00201 |
 
-Báo cáo ở nhiều cách chia bin có lý do: 77% prediction nằm dưới 0.1, nên uniform binning nhét
-gần hết dữ liệu vào một bin và cho ECE đẹp giả tạo. Cải thiện **giữ nguyên độ lớn ở cả hai
-cách chia** → không phải artifact của binning.
+Mình report hai kiểu chia bin vì kiểu chia đều dễ cho số đẹp giả. Có tới 77% prediction nằm
+dưới 0.1, nên chia đều 10 bin thì một bin nuốt gần hết dữ liệu và mọi sai lệch bên trong nó
+bị trung bình hóa mất. Chia theo phân vị thì mỗi bin đều có đủ mẫu. Kết quả là cải thiện vẫn
+giữ nguyên độ lớn ở cả hai kiểu, nên mình tin nó là thật.
 
-Con số "sau hiệu chỉnh" đo bằng **nested calibration**: chia OOF thành 5 phần, fit calibrator
-trên 4 phần và dự đoán phần còn lại. Đo kiểu ngây thơ (fit rồi predict trên chính nó) sẽ ra
-ECE thấp giả.
+Số "sau hiệu chỉnh" đo bằng nested CV: cắt OOF thành 5 phần, fit calibrator trên 4 phần rồi
+predict phần còn lại. Nếu fit rồi predict luôn trên chính nó thì ECE sẽ đẹp một cách vô nghĩa.
 
-Platt/sigmoid làm ECE **xấu đi** — vì baseline cố tình không dùng `scale_pos_weight`, model
-gốc đã khá calibrated sẵn, áp thêm một biến đổi sigmoid cứng lên nó là làm hỏng.
+Một chi tiết thú vị: Platt scaling làm ECE **xấu đi**. Lý do là baseline mình cố ý không dùng
+`scale_pos_weight`, nên model gốc vốn đã khá calibrated rồi. Ép thêm một hàm sigmoid cứng lên
+nó chỉ tổ làm hỏng.
 
-### Điểm số → quyết định
+### Điểm số dịch sang quyết định
 
-| Tỉ lệ duyệt | Ngưỡng PD | Bad rate nhóm duyệt | Giảm tổn thất | Ca vỡ nợ bị chặn |
+| Duyệt bao nhiêu | Ngưỡng PD | Vỡ nợ trong nhóm duyệt | Giảm tổn thất | Chặn được |
 |---|---|---|---|---|
-| 50% | 0.0460 | 2.3% | −71.1% | 85.5% |
-| **70%** | **0.0863** | **3.5%** | **−56.5%** | **69.5%** |
-| 90% | 0.1887 | 5.6% | −30.8% | 37.8% |
-| 100% | — | 8.1% | — | — |
+| 50% | 0.0460 | 2.3% | 71.1% | 85.5% ca |
+| 70% | 0.0863 | 3.5% | 56.5% | 69.5% ca |
+| 90% | 0.1887 | 5.6% | 30.8% | 37.8% ca |
+| duyệt hết | | 8.1% | | |
 
-### Tác động không đồng đều
+### Chuyện fairness
 
-Giới tính và tuổi là **thuộc tính được bảo vệ** theo ECOA. Ở ngưỡng duyệt 70%:
+Giới tính và tuổi là thuộc tính được bảo vệ theo ECOA, nên mình soi luôn. Ở ngưỡng duyệt 70%,
+tính adverse impact ratio theo 4/5ths rule (dưới 0.80 là có vấn đề):
 
-| Adverse impact ratio (4/5ths rule, ngưỡng 0.80) | |
-|---|---|
-| Theo giới tính | **0.816** — vừa qua ngưỡng |
-| Theo nhóm tuổi | **0.446** — **không đạt** |
+- Theo giới tính: 0.816, vừa đủ qua.
+- Theo nhóm tuổi: **0.446, trượt hẳn.**
 
-Model **calibrate rất đều** giữa các nhóm (lệch giữa PD trung bình và bad rate thật đều dưới
-0.2pp, trừ nhóm dưới 25 tuổi lệch +1.9pp) — nó không thiên vị theo nghĩa dự đoán sai lệch có
-hệ thống. Chênh lệch tỉ lệ duyệt phản ánh chênh lệch rủi ro có thật (bad rate nhóm <25 là
-12.3%, nhóm 65+ là 3.7%).
+Đọc kỹ thì model không hề "thiên vị" theo nghĩa thống kê: chênh lệch giữa PD trung bình và bad
+rate thật của từng nhóm đều dưới 0.2 điểm phần trăm, trừ nhóm dưới 25 tuổi lệch +1.9pp. Nó dự
+đoán đúng mức rủi ro cho từng nhóm. Chênh lệch tỉ lệ duyệt đến từ chênh lệch rủi ro có thật:
+nhóm dưới 25 có bad rate 12.3%, nhóm trên 65 chỉ 3.7%.
 
-Nhưng "chênh vì rủi ro chênh thật" **không phải biện hộ hợp lệ về pháp lý** — 4/5ths rule đo
-*tác động*, không đo *ý định*. Chi tiết và hàm ý triển khai: [model card](ml/artifacts/model_card.md) mục 4.
-
----
-
-## Kiến trúc
-
-Ba tầng, biên giới cứng, mỗi tầng không biết gì về tầng sau nó:
-
-```
-ml/                     backend/                  frontend/
-pipeline ML độc lập  →  FastAPI chỉ LOAD       →  React (Vite)
-                        artifact, KHÔNG train
-        └────────── ml/artifacts/ ──────────┘
-              (biên giới duy nhất)
-```
-
-**Vì sao tách cứng:** backend serve 1 applicant phải chạy **đúng đường tính feature** như lúc
-train. Nếu feature engineering nằm rải rác trong notebook thì không có cách nào đảm bảo điều
-đó. Ở đây nó là một `FeaturePipeline` pickle được (`fit` trên train, `transform` dùng lại y
-hệt lúc serve), nên training-serving skew bị chặn ở mức thiết kế chứ không phải mức kỷ luật.
-
-`backend/` **không bao giờ** import `ml.src.train*` hay `ml.src.calibrate` (orchestration
-training). Nó chỉ import `ml.src.features.build`, `ml.src.explain`, `ml.src.reason_codes` —
-ba module thuần transform/hàm thuần, cần thiết để unpickle được artifact.
-
----
-
-## Chạy thử
-
-### 1. Chuẩn bị
-
-```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -r backend/requirements.txt   # đã include ml/requirements.txt
-```
-
-> `numpy<2.5` là pin **bắt buộc**, không phải cẩn thận thừa: `shap` phụ thuộc `numba`, và
-> numba hiện chỉ hỗ trợ NumPy ≤ 2.4. Với numpy 2.5 thì `import shap` chết ngay.
-
-Tải [dữ liệu Kaggle](https://www.kaggle.com/c/home-credit-default-risk/data) và giải nén 7
-file CSV vào `data/` (thư mục này được gitignore — ~2.5GB).
-
-### 2. Chạy pipeline ML (theo đúng thứ tự)
-
-```bash
-python -m ml.src.run_build_features      # 7 bảng -> 709 feature + feature_pipeline.pkl
-python -m ml.src.train                   # baseline OOF (Block 1)
-python -m ml.src.train_engineered        # OOF engineered + monotonic (Block 2-3)
-python -m ml.src.calibrate               # isotonic + model.txt (Block 4-5)
-python -m ml.src.explain                 # SHAP global importance (Block 6)
-python -m ml.src.export_metrics_summary  # metrics + cutoff policy + fairness (Block 9)
-python -m ml.src.export_model_card       # model_card.md
-```
-
-> ⚠️ Đừng chạy `python -m ml.src.features.build`. Module đó **định nghĩa** `FeaturePipeline`;
-> chạy trực tiếp sẽ nạp nó as `__main__`, ghi `__module__ == "__main__"` vào pickle, và
-> `feature_pipeline.pkl` sẽ không unpickle được từ backend. Dùng `run_build_features` (chỉ
-> import `main()`). Có test chặn regression này.
-
-### 3. Backend + frontend
-
-```bash
-docker compose up -d mysql               # MySQL cho audit trail (port 3307)
-cp .env.example .env                     # rồi sửa mật khẩu
-alembic -c backend/alembic.ini upgrade head
-uvicorn backend.app.main:app --reload    # startup load 7 bảng vào RAM, ~10-50s
-```
-
-```bash
-cd frontend && npm install && npm run dev   # http://localhost:5173
-```
-
-### 4. Test
-
-```bash
-pytest ml/tests backend/tests -q
-```
-
----
-
-## Quyết định kỹ thuật đáng chú ý
-
-**Metric tự viết tay.** `ml/src/metrics.py` không gọi `sklearn.metrics` cho các metric lõi:
-AUC bằng Mann–Whitney rank O(n log n) với tie = rank trung bình, Gini, KS, PR-AUC step-sum,
-Brier, ECE (uniform + quantile binning), partial AUC chuẩn hoá McClish, TPR@FPR, decile table
-kiểu risk. Sklearn chỉ dùng trong test để assert kết quả khớp.
-
-**Baseline sạch có chủ đích.** Không `scale_pos_weight`, không `is_unbalance`, không impute.
-Đây không phải lười — reweighting làm hỏng calibration, mà calibration chính là thứ block sau
-đo. Giữ baseline sạch để có mốc so sánh thật.
-
-**Monotonic constraints có lý do domain, không phải rải đại.** 18 feature, mỗi cái kèm lý do
-viết trong [`features.yaml`](ml/config/features.yaml). Cố tình **không** ràng buộc
-`AMT_CREDIT`/`AMT_ANNUITY` vì quan hệ với rủi ro thực tế mơ hồ. Kiểm chứng chéo ở Block 6:
-7/18 feature này lọt top-30 SHAP global — domain reasoning khớp thứ model thực sự học.
-
-**Chống training-serving skew ở mức thiết kế.** Domain của mọi cột categorical được chốt lúc
-`fit` và áp lại y hệt lúc `transform` — vì một applicant lẻ lúc serve gần như chắc chắn không
-có đủ mọi category so với lúc train. `bureau_balance.STATUS` hardcode theo data dictionary
-thay vì suy ra từ data. Có test chuyên bắt lớp bug này.
-
-**2-level aggregation cho bureau.** `bureau_balance` chỉ có `SK_ID_BUREAU`, không có
-`SK_ID_CURR` — phải agg theo tháng về từng khoản vay, merge vào `bureau`, rồi mới agg về
-applicant. Backend lọc dữ liệu theo đúng chain đó khi serve.
-
-**Feature derived phải tính ở mức dòng.** `DAYS_LATE` và `PAYMENT_DIFF` trong
-`installments_payments` được tính trước khi agg — agg riêng từng cột gốc không tái tạo được
-độ trễ/thiếu hụt của từng lần trả cụ thể. Cả hai đều lọt top-30 SHAP.
-
----
-
-## Bug thật đã bắt được
-
-Mấy cái này không xuất hiện trong test đơn giản, chỉ lộ ra khi chạy hệ thống thật:
-
-1. **`Booster.predict()` khớp cột theo VỊ TRÍ, không theo tên.** Đảo thứ tự cột cho ra kết quả
-   khác mà không báo lỗi. `model.feature_name()` cũng không đáng tin vì LightGBM tự sanitize
-   tên cột có ký tự đặc biệt khi lưu `model.txt`. → mọi nơi dùng model đều reindex theo
-   `feature_names.json` trước khi predict.
-2. **Pickle ghi `__module__ = "__main__"`.** `feature_pipeline.pkl` build qua
-   `python -m ml.src.features.build` không unpickle được từ bất kỳ entry point nào khác.
-3. **`float()` vô điều kiện lên feature value.** Crash khi top-SHAP feature của một applicant
-   là cột categorical (`CODE_GENDER`, `ORGANIZATION_TYPE`...).
-4. **`json.dump` ghi `NaN` — không phải JSON hợp lệ.** `json.loads` của Python vẫn đọc được
-   nên lỗi im lặng ở tầng ML, nhưng `JSON.parse` của trình duyệt thì ném lỗi. NaN xuất hiện
-   thật: AUC của nhóm phân khúc chỉ có 1 lớp (`CODE_GENDER='XNA'`, 4 dòng).
-5. **Label SHAP waterfall đè lên bar.** Label lấy nhầm cạnh bar (luôn lấy cạnh max thay vì
-   cạnh đúng theo dấu); bar dài thì label tràn sang cột tên feature bên trái.
-
----
-
-## Hạn chế đã biết
-
-Ghi ra vì đây là những chỗ một reviewer sẽ hỏi, và câu trả lời "tôi biết" tốt hơn "tôi không
-để ý":
-
-1. **Early stopping dùng chính fold sinh OOF prediction.** Fold validation vừa để dừng sớm vừa
-   để lấy `oof[va]` → **AUC 0.78757 lạc quan nhẹ**, không phải OOF hoàn toàn sạch. Delta so
-   với baseline vẫn công bằng vì cả hai lệch như nhau. Sửa được bằng cách tách inner split.
-2. **Calibrator fit trên OOF nhưng áp cho model train trên 100% data.** Chuẩn ngành (giống
-   `CalibratedClassifierCV(ensemble=False)`) nhưng là một giả định, không hiển nhiên đúng.
-3. **`CODE_GENDER` đang được dùng làm feature** và có thể lọt vào reason codes. Ở hệ thống
-   thật là không được phép — giữ lại trong demo để bảng phân khúc có ý nghĩa đối chiếu.
-4. **Chưa tune hyperparameter.** Tham số trong `params.yaml` chọn tay, chưa chạy Optuna.
-5. **Không có out-of-time validation.** Dataset Kaggle không có trục thời gian rõ ràng, nên
-   thiếu hẳn thứ bắt buộc phải có ở scorecard thật.
-6. **"Tổn thất tương đối" không phải mô hình tổn thất thật** — giả định loss tỉ lệ với số ca
-   vỡ nợ được duyệt và exposure mỗi khoản như nhau, thiếu LGD/EAD và giá trị khoản vay.
-
-## Cố tình không làm
-
-Đây là **portfolio project, phạm vi demo** — hình dáng như production ở những chỗ kể được
-chuyện (tách tầng, chống skew, versioning, audit trail), nhưng chạy local, data tĩnh,
-single-user. Những thứ dưới đây bị loại **có chủ đích**, không phải quên:
-
-auth/JWT · monitoring/Prometheus · Kubernetes · CI/CD · drift detection · retraining tự động ·
-LLM/chatbot · Playwright visual regression · Dockerfile cho backend/frontend
-
----
+Vấn đề là "chênh vì rủi ro chênh thật" không cứu được về mặt pháp lý. 4/5ths rule đo tác động
+chứ không đo ý định. Nếu đây là hệ thống thật thì con số 0.446 bắt buộc phải qua pháp chế, và
+nhiều khả năng phải bỏ các feature đại diện cho tuổi hoặc đặt cutoff riêng theo nhóm. Mình
+viết kỹ hơn trong [model card](ml/artifacts/model_card.md) mục 4.
 
 ## Cấu trúc
 
+Ba tầng, cắt rõ ràng, tầng trước không biết gì về tầng sau:
+
 ```
-ml/                              # TẦNG 1 — pipeline ML độc lập
-├── config/{features,params}.yaml    # monotonic constraints + hyperparams
-├── src/
-│   ├── metrics.py                   # metric tự viết tay
-│   ├── features/                    # agg tái dùng + FeaturePipeline
-│   ├── train.py, train_engineered.py, calibrate.py
-│   ├── explain.py, reason_codes.py  # SHAP + adverse action reason codes
-│   ├── policy.py                    # cutoff policy + phân khúc/fairness
-│   └── export_{metrics_summary,model_card}.py
-├── artifacts/                   # ← BIÊN GIỚI sang backend
-└── tests/
-backend/                         # TẦNG 2 — FastAPI, chỉ load artifact
-├── app/{scorer,schemas,config}.py
-├── app/data/{source,assembler}.py   # kéo 7 bảng theo SK_ID_CURR
-├── app/db/                          # MySQL — audit trail mỗi lần chấm
-├── app/routers/{score,history,insights}.py
-└── tests/
-frontend/                        # TẦNG 3 — React, hướng "Risk Console"
-└── src/{pages,components,styles}/
+ml/                     backend/                  frontend/
+pipeline ML         →   FastAPI, chỉ load     →   React (Vite)
+đứng độc lập            artifact, không train
+        └────────── ml/artifacts/ ──────────┘
 ```
 
-Chi tiết bối cảnh và các quyết định đã chốt: [ghi chú thiết kế](docs/NOTES.md).
-Chi tiết model: [model card](ml/artifacts/model_card.md).
+Lý do phải cắt cứng như vậy: khi backend chấm một hồ sơ lẻ, nó phải chạy đúng cái đường tính
+feature như lúc train. Nếu feature engineering nằm rải rác trong notebook thì không có cách
+nào đảm bảo được. Ở đây nó là một class `FeaturePipeline` pickle được, `fit` trên train và
+`transform` dùng lại y nguyên lúc serve.
+
+Backend không bao giờ import `ml.src.train*` hay `ml.src.calibrate`. Nó chỉ đụng vào
+`features.build`, `explain` và `reason_codes`, ba module thuần transform, cần để unpickle
+được artifact.
+
+## Chạy thử
+
+Cài đặt:
+
+```bash
+python -m venv .venv && source .venv/bin/activate
+pip install -r backend/requirements.txt
+```
+
+Cái pin `numpy<2.5` trong requirements là bắt buộc chứ không phải cẩn thận thừa. `shap` kéo
+theo `numba`, mà numba tới giờ vẫn chưa hỗ trợ numpy 2.5, nên `import shap` sẽ chết ngay.
+
+Tải [data từ Kaggle](https://www.kaggle.com/c/home-credit-default-risk/data) và giải nén 7
+file CSV vào `data/`. Thư mục này gitignore, khoảng 2.5GB.
+
+Chạy pipeline theo đúng thứ tự:
+
+```bash
+python -m ml.src.run_build_features      # 7 bảng -> 709 feature
+python -m ml.src.train                   # baseline
+python -m ml.src.train_engineered        # + monotonic constraints
+python -m ml.src.calibrate               # isotonic + model cuối
+python -m ml.src.explain                 # SHAP
+python -m ml.src.export_metrics_summary  # metrics + cutoff + fairness
+python -m ml.src.export_model_card
+```
+
+Đừng chạy `python -m ml.src.features.build` nhé. Module đó định nghĩa class `FeaturePipeline`,
+chạy trực tiếp thì Python nạp nó thành `__main__` và pickle sẽ ghi `__module__ = "__main__"`,
+sau đó backend không unpickle được nữa. Mình dính bug này một lần rồi nên giờ có test chặn.
+
+Backend với frontend:
+
+```bash
+docker compose up -d mysql            # MySQL cho audit trail, port 3307
+cp .env.example .env                  # nhớ sửa mật khẩu
+alembic -c backend/alembic.ini upgrade head
+uvicorn backend.app.main:app --reload # load 7 bảng vào RAM, đợi 10-50s
+```
+
+```bash
+cd frontend && npm install && npm run dev
+```
+
+Test: `pytest ml/tests backend/tests -q` (55 test).
+
+## Mấy chỗ mình nghĩ nhiều nhất
+
+**Tự viết metric.** File `ml/src/metrics.py` không gọi `sklearn.metrics` cho các metric chính.
+AUC viết bằng Mann-Whitney rank, tie thì lấy rank trung bình, chạy O(n log n). Rồi Gini, KS,
+PR-AUC, Brier, ECE, partial AUC chuẩn hóa McClish, TPR@FPR, bảng decile kiểu risk. Sklearn chỉ
+xuất hiện trong test để assert là mình viết đúng. Làm vậy vì mình muốn thực sự hiểu từng metric
+chứ không phải gọi hàm rồi đọc số.
+
+**Baseline để sạch.** Không `scale_pos_weight`, không `is_unbalance`, không impute gì cả.
+Không phải lười. Reweighting làm hỏng calibration, mà calibration lại đúng là thứ block sau
+đo. Muốn có mốc so sánh thật thì phải để baseline nguyên vẹn.
+
+**Monotonic constraints chọn có lý do.** 18 feature, mỗi cái mình viết lý do domain kèm trong
+[`features.yaml`](ml/config/features.yaml). Cố ý không ràng buộc `AMT_CREDIT` và `AMT_ANNUITY`
+vì quan hệ của chúng với rủi ro khá mơ hồ, vay nhiều có thể là khách tốt được duyệt nhiều mà
+cũng có thể là đang quá tải nợ. Về sau chạy SHAP thì thấy 7 trong 18 feature này lọt top 30,
+tức là cái mình suy luận từ domain khớp với cái model thực sự học.
+
+**Chống training-serving skew ngay từ thiết kế.** Domain của mọi cột categorical được chốt lúc
+`fit` và áp lại y hệt lúc `transform`, vì một hồ sơ lẻ lúc serve gần như chắc chắn không có đủ
+mọi giá trị category như lúc train. Riêng `bureau_balance.STATUS` mình hardcode theo data
+dictionary thay vì suy từ data.
+
+**Bảng bureau phải agg hai tầng.** `bureau_balance` chỉ có `SK_ID_BUREAU`, không có
+`SK_ID_CURR`. Nên phải gom theo tháng về từng khoản vay trước, merge vào `bureau`, rồi mới gom
+tiếp về từng người. Lúc serve backend cũng phải lọc dữ liệu theo đúng cái chain đó.
+
+**Feature phái sinh phải tính ở mức dòng.** `DAYS_LATE` và `PAYMENT_DIFF` trong
+`installments_payments` mình tính trước khi agg. Nếu agg riêng từng cột gốc rồi mới trừ nhau
+thì mất hết thông tin về độ trễ của từng lần trả cụ thể. Cả hai đều lọt top 30 SHAP.
+
+## Bug đã dính
+
+Mấy cái này test đơn giản không bắt được, phải chạy thật mới lòi ra:
+
+`Booster.predict()` khớp cột theo **vị trí** chứ không theo tên. Đảo thứ tự cột thì ra kết quả
+khác mà chẳng báo lỗi gì. Định dùng `model.feature_name()` để reindex thì phát hiện nó cũng
+không tin được, vì LightGBM tự sửa tên cột có ký tự đặc biệt khi lưu `model.txt`. Cuối cùng
+mọi chỗ dùng model đều phải reindex theo `feature_names.json`.
+
+Pickle ghi `__module__ = "__main__"` như nói ở trên, làm artifact không load được từ backend
+lẫn pytest.
+
+Ép `float()` lên giá trị feature mà không kiểm tra, crash ngay khi top SHAP của một người là
+cột categorical như `CODE_GENDER`.
+
+`json.dump` ghi ra `NaN`, mà `NaN` không phải JSON hợp lệ. Python đọc lại được nên ở tầng ML
+không ai biết, nhưng `JSON.parse` của browser thì ném lỗi luôn, trang Insights trắng bốc. NaN
+xuất hiện thật ở chỗ AUC của nhóm chỉ có một class (`CODE_GENDER = 'XNA'`, đúng 4 dòng).
+
+Label trên biểu đồ SHAP waterfall đè lên bar, do lấy nhầm cạnh: luôn lấy cạnh max thay vì lấy
+cạnh đúng theo dấu của giá trị.
+
+## Chỗ còn yếu
+
+Viết ra vì đây là những chỗ người ta sẽ hỏi, mà trả lời "mình biết" thì hơn "mình không để ý":
+
+Early stopping đang dùng chính cái fold mà nó sắp predict. Fold validation vừa để dừng sớm vừa
+để lấy `oof[va]`, nên số vòng lặp được chọn bằng đúng dữ liệu nó sắp chấm. Nghĩa là AUC 0.78757
+lạc quan hơn thực tế một chút. Phần so sánh với baseline thì vẫn công bằng vì cả hai lệch như
+nhau. Sửa được bằng cách tách một inner split riêng, mình chưa làm.
+
+Calibrator fit trên OOF nhưng lại đem áp cho model train trên 100% data. Đây là cách chuẩn,
+giống `CalibratedClassifierCV(ensemble=False)`, nhưng vẫn là một giả định chứ không hiển nhiên
+đúng.
+
+`CODE_GENDER` vẫn đang là feature và có thể lọt vào reason codes. Hệ thống thật thì không được
+phép. Mình giữ lại trong demo để bảng phân khúc ở trên có cái mà đối chiếu.
+
+Chưa tune hyperparameter, tham số trong `params.yaml` là chọn tay.
+
+Không có out-of-time validation. Data Kaggle không có trục thời gian rõ ràng, mà scorecard thật
+thì bắt buộc phải có cái này.
+
+Cột "giảm tổn thất" giả định loss tỉ lệ với số ca vỡ nợ được duyệt và mọi khoản vay có exposure
+như nhau. Đủ để so sánh giữa các ngưỡng với nhau, nhưng không phải mô hình tổn thất thật vì
+thiếu LGD, EAD và giá trị từng khoản.
+
+## Chỗ cố tình không làm
+
+Đây là project portfolio, phạm vi demo. Nó có hình dáng production ở những chỗ kể được chuyện
+(tách tầng, chống skew, versioning, audit trail) nhưng vẫn chạy local, data tĩnh, một người
+dùng. Những thứ sau mình bỏ có chủ đích chứ không phải quên:
+
+auth/JWT, monitoring, Kubernetes, CI/CD, drift detection, retraining tự động, LLM, Playwright
+visual regression, Dockerfile cho backend và frontend.
+
+## Cây thư mục
+
+```
+ml/                              tầng 1, pipeline ML độc lập
+├── config/                          features.yaml + params.yaml
+├── src/
+│   ├── metrics.py                   metric tự viết
+│   ├── features/                    agg tái dùng + FeaturePipeline
+│   ├── train.py, train_engineered.py, calibrate.py
+│   ├── explain.py, reason_codes.py  SHAP + reason codes
+│   ├── policy.py                    cutoff + fairness
+│   └── export_*.py
+├── artifacts/                       ranh giới sang backend
+└── tests/
+backend/                         tầng 2, FastAPI chỉ load artifact
+├── app/data/                        kéo 7 bảng theo SK_ID_CURR
+├── app/db/                          MySQL, log mỗi lần chấm
+├── app/routers/                     score, history, insights
+└── tests/
+frontend/                        tầng 3, React
+└── src/
+```
+
+Bối cảnh và các quyết định đã chốt nằm trong [ghi chú thiết kế](docs/NOTES.md).
+Chi tiết model trong [model card](ml/artifacts/model_card.md).
