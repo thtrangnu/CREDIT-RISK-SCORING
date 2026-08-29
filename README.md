@@ -5,7 +5,32 @@ con số xác suất kèm lý do vì sao ra con số đó.
 
 Duyệt 70% hồ sơ tốt nhất thì tỉ lệ vỡ nợ trong nhóm được duyệt tụt từ 8.07% xuống 3.51%.
 
-## Demo
+![Python](https://img.shields.io/badge/Python-3.13-3776AB?style=flat-square&logo=python&logoColor=white)
+![LightGBM](https://img.shields.io/badge/LightGBM-4.6-02569B?style=flat-square)
+![SHAP](https://img.shields.io/badge/SHAP-explainability-8B5CF6?style=flat-square)
+![scikit-learn](https://img.shields.io/badge/scikit--learn-1.7-F7931E?style=flat-square&logo=scikitlearn&logoColor=white)
+![pandas](https://img.shields.io/badge/pandas-2.3-150458?style=flat-square&logo=pandas&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?style=flat-square&logo=fastapi&logoColor=white)
+![Pydantic](https://img.shields.io/badge/Pydantic-v2-E92063?style=flat-square&logo=pydantic&logoColor=white)
+![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-2.0-D71F00?style=flat-square&logo=sqlalchemy&logoColor=white)
+![MySQL](https://img.shields.io/badge/MySQL-8.0-4479A1?style=flat-square&logo=mysql&logoColor=white)
+![React](https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=black)
+![Vite](https://img.shields.io/badge/Vite-8-646CFF?style=flat-square&logo=vite&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker_Compose-2496ED?style=flat-square&logo=docker&logoColor=white)
+
+## 🛠 Tech stack
+
+| Tầng | Dùng gì |
+|---|---|
+| 🤖 **Model** | LightGBM, SHAP, scikit-learn (chỉ cho isotonic/Platt và chia fold) |
+| 🐼 **Data** | pandas, numpy, PyArrow |
+| ⚡ **API** | FastAPI, Pydantic v2, SQLAlchemy 2.0, Alembic |
+| 🗄 **DB** | MySQL 8 (audit trail), PyMySQL |
+| ⚛️ **Web** | React 19, Vite, React Router. Biểu đồ vẽ SVG tay, không dùng chart lib |
+| 🧪 **Khác** | Docker Compose, pytest |
+
+
+## 📸 Demo
 
 Ba trang: Score (tìm hồ sơ, chấm điểm, xem top lý do), Insights (SHAP toàn cục, waterfall từng
 hồ sơ, bảng cutoff, bảng fairness), History (log mọi lần chấm).
@@ -17,24 +42,25 @@ hồ sơ, bảng cutoff, bảng fairness), History (log mọi lần chấm).
 
 > Chưa có screenshot. Chạy `npm run dev` ở `frontend/` để xem.
 
-## Mục lục
+## 📑 Mục lục
 
-- [Giới thiệu](#giới-thiệu)
-- [Tính năng](#tính-năng)
-- [Cấu trúc thư mục](#cấu-trúc-thư-mục)
-- [Cài đặt](#cài-đặt)
-- [Cách chạy](#cách-chạy)
-- [Dữ liệu](#dữ-liệu)
-- [Phương pháp](#phương-pháp)
-- [Kết quả](#kết-quả)
-- [Vài chỗ đáng nói](#vài-chỗ-đáng-nói)
-- [Bug đã dính](#bug-đã-dính)
-- [Tech stack](#tech-stack)
-- [Roadmap](#roadmap)
-- [License](#license)
-- [Tác giả](#tác-giả)
+- [Tech stack](#-tech-stack)
+- [Demo](#-demo)
+- [Giới thiệu](#-giới-thiệu)
+- [Tính năng](#-tính-năng)
+- [Cấu trúc thư mục](#-cấu-trúc-thư-mục)
+- [Cài đặt](#-cài-đặt)
+- [Cách chạy](#-cách-chạy)
+- [Dữ liệu](#-dữ-liệu)
+- [Phương pháp](#-phương-pháp)
+- [Kết quả](#-kết-quả)
+- [Vài chỗ đáng nói](#-vài-chỗ-đáng-nói)
+- [Bug đã dính](#-bug-đã-dính)
+- [Roadmap](#-roadmap)
+- [License](#-license)
+- [Tác giả](#-tác-giả)
 
-## Giới thiệu
+## 🎯 Giới thiệu
 
 Bộ [Home Credit Default Risk](https://www.kaggle.com/c/home-credit-default-risk) trên Kaggle.
 7 bảng quan hệ, 307 nghìn hồ sơ, khoảng 8% vỡ nợ. Bài toán binary classification kinh điển
@@ -49,7 +75,7 @@ mình đẩy SHAP ra tận UI thay vì để nó nằm trong notebook.
 AUC 0.78 nói được gì với người làm business? Không nhiều. Nên phần cuối mình dịch điểm số
 thành quyết định duyệt hay không, rồi đo xem cắt được bao nhiêu tổn thất.
 
-## Tính năng
+## ✨ Tính năng
 
 - Gộp 7 bảng thành 709 feature qua pipeline tái sử dụng được, không phải code rời trong notebook
 - LightGBM + monotonic constraints trên 18 feature
@@ -60,7 +86,7 @@ thành quyết định duyệt hay không, rồi đo xem cắt được bao nhi�
 - API FastAPI ghi log xuống MySQL, có `model_version`
 - Web React xem điểm, waterfall SHAP, lịch sử
 
-## Cấu trúc thư mục
+## 📁 Cấu trúc thư mục
 
 ```
 ml/                              tầng 1, pipeline ML đứng độc lập
@@ -92,7 +118,7 @@ frontend/                        tầng 3, React + Vite
 └── src/{pages,components,styles}/
 ```
 
-## Cài đặt
+## 📦 Cài đặt
 
 ```bash
 git clone https://github.com/thtrangnu/Home-credit-scoring-.git
@@ -107,7 +133,7 @@ cd frontend && npm install && cd ..
 Pin `numpy<2.5` là bắt buộc. shap kéo theo numba, numba chưa hỗ trợ numpy 2.5, `import shap`
 chết ngay.
 
-## Cách chạy
+## ▶️ Cách chạy
 
 Pipeline ML, đúng thứ tự này:
 
@@ -140,7 +166,7 @@ cd frontend && npm run dev            # http://localhost:5173
 
 Test: `pytest ml/tests backend/tests -q`, 55 cái.
 
-## Dữ liệu
+## 🗃 Dữ liệu
 
 Tải ở [trang competition](https://www.kaggle.com/c/home-credit-default-risk/data), cần tài
 khoản Kaggle và bấm đồng ý điều khoản. Giải nén 7 file CSV vào `data/`. Khoảng 2.5GB, đã
@@ -160,7 +186,7 @@ Hai cái bẫy trong data: mọi cột `DAYS_*` là số âm tính lùi từ ng�
 có sentinel `365243` nghĩa là "không áp dụng", chiếm 18% dòng, phần lớn là người nghỉ hưu.
 Pipeline đổi nó về NaN.
 
-## Phương pháp
+## 🔬 Phương pháp
 
 ### Kiến trúc
 
@@ -206,7 +232,7 @@ hướng rõ ràng.
 Hiệu chỉnh bằng isotonic, đo bằng nested CV: cắt OOF thành 5 phần, fit calibrator trên 4 phần
 rồi predict phần còn lại. Fit rồi predict luôn trên chính nó thì ECE sẽ đẹp một cách vô nghĩa.
 
-## Kết quả
+## 📊 Kết quả
 
 Gộp cả 7 bảng so với chỉ dùng bảng chính:
 
@@ -261,7 +287,7 @@ thật thì con số 0.446 phải qua pháp chế, nhiều khả năng phải b�
 hoặc đặt cutoff riêng theo nhóm. Viết kỹ hơn trong [model card](ml/artifacts/model_card.md)
 mục 4.
 
-## Vài chỗ đáng nói
+## 💭 Vài chỗ đáng nói
 
 **Metric tự viết.** `ml/src/metrics.py` không gọi `sklearn.metrics` cho metric chính. AUC viết
 bằng Mann-Whitney rank, tie lấy rank trung bình, O(n log n). Rồi Gini, KS, PR-AUC, Brier, ECE,
@@ -274,7 +300,7 @@ làm hỏng calibration, mà calibration là thứ block sau đo, nên để ngu
 **Monotonic constraints khớp SHAP.** 7 trong 18 feature bị ràng buộc lọt top 30 quan trọng
 nhất. Cái suy từ domain khớp cái model học được, không phải mình áp đặt lên nó.
 
-## Bug đã dính
+## 🐛 Bug đã dính
 
 Test đơn giản không bắt được, phải chạy thật mới lòi:
 
@@ -296,18 +322,7 @@ chả ai biết, nhưng `JSON.parse` của browser thì ném lỗi luôn, trang 
 Label trên SHAP waterfall đè lên bar. Lấy nhầm cạnh, luôn lấy cạnh max thay vì cạnh đúng theo
 dấu.
 
-## Tech stack
-
-**ML:** LightGBM, SHAP, scikit-learn (chỉ dùng cho isotonic/Platt và chia fold), pandas,
-numpy, PyArrow
-
-**Backend:** FastAPI, Pydantic v2, SQLAlchemy 2.0, Alembic, MySQL 8, PyMySQL
-
-**Frontend:** React 19, Vite, React Router. Biểu đồ vẽ SVG tay, không dùng chart lib
-
-**Khác:** Docker Compose, pytest
-
-## Roadmap
+## 🗺 Roadmap
 
 ### Chỗ còn yếu
 
@@ -346,13 +361,13 @@ Project portfolio, phạm vi demo. Chạy local, data tĩnh, một người dùn
 đích: auth/JWT, monitoring, Kubernetes, CI/CD, drift detection, retraining tự động, LLM,
 Playwright visual regression, Dockerfile cho backend và frontend.
 
-## License
+## 📄 License
 
 Code dùng thoải mái. Data thì theo điều khoản của
 [Home Credit Default Risk](https://www.kaggle.com/c/home-credit-default-risk/rules) trên
 Kaggle, mình không phân phối lại nên bạn tự tải.
 
-## Tác giả
+## 👤 Tác giả
 
 [@thtrangnu](https://github.com/thtrangnu)
 
