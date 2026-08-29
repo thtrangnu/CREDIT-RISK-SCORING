@@ -1,0 +1,43 @@
+# Monotonic constraints cho LightGBM (Block 3).
+#
+# Quy ước: +1 = feature tăng -> P(default) không được giảm (chỉ tăng/giữ nguyên)
+#          -1 = feature tăng -> P(default) không được tăng (chỉ giảm/giữ nguyên)
+#           0 (mặc định, không cần khai báo) = không ràng buộc
+#
+# Trong lending (regulated), monotonic constraints không chỉ là kỹ thuật regularization
+# — chúng đảm bảo model không học ra quan hệ ngược đời (vd: thu nhập cao hơn lại bị
+# chấm rủi ro cao hơn), điều bắt buộc phải giải trình được cho adverse action reason codes.
+#
+# CHỈ ràng buộc feature có lý do domain vững, đơn điệu rõ ràng theo hiểu biết rủi ro tín
+# dụng phổ thông. KHÔNG ràng buộc feature mà quan hệ với rủi ro thực tế là mơ hồ/phi tuyến
+# (vd: AMT_CREDIT, AMT_ANNUITY — khoản vay lớn có thể là khách tốt được duyệt nhiều hơn,
+# hoặc khách quá tải nợ — không có hướng đơn điệu đáng tin).
+
+monotone_constraints:
+  # Điểm tín dụng ngoài (EXT_SOURCE_*): điểm càng cao -> hồ sơ càng tốt -> rủi ro càng thấp.
+  EXT_SOURCE_1: -1
+  EXT_SOURCE_2: -1
+  EXT_SOURCE_3: -1
+
+  # Nhân khẩu học / hồ sơ hiện tại.
+  DAYS_BIRTH: 1          # càng gần 0 (ít âm hơn) = càng trẻ -> rủi ro cao hơn (giả định chuẩn ngành)
+  DAYS_EMPLOYED: 1        # càng gần 0 = thâm niên công việc càng ngắn -> rủi ro cao hơn
+  AMT_INCOME_TOTAL: -1    # thu nhập càng cao -> rủi ro càng thấp
+  REGION_RATING_CLIENT: 1          # rating vùng 1=tốt nhất, 3=xấu nhất (theo data dictionary) -> tăng = rủi ro tăng
+  REGION_RATING_CLIENT_W_CITY: 1
+
+  # Lịch sử tín dụng ở TCTD khác (bureau) — quá hạn càng nhiều/nặng -> rủi ro càng cao.
+  BUREAU_CREDIT_DAY_OVERDUE_MEAN: 1
+  BUREAU_CREDIT_DAY_OVERDUE_MAX: 1
+  BUREAU_AMT_CREDIT_SUM_OVERDUE_MEAN: 1
+  BUREAU_AMT_CREDIT_SUM_OVERDUE_SUM: 1
+
+  # Hành vi trả góp trước đây (installments) — trả trễ/thiếu càng nhiều -> rủi ro càng cao.
+  INSTAL_DAYS_LATE_MEAN: 1
+  INSTAL_DAYS_LATE_MAX: 1
+  INSTAL_PAYMENT_DIFF_MEAN: 1
+  INSTAL_PAYMENT_DIFF_SUM: 1
+
+  # POS/cash trước đây — số ngày quá hạn (DPD) càng cao -> rủi ro càng cao.
+  POS_SK_DPD_MEAN: 1
+  POS_SK_DPD_MAX: 1
