@@ -1,0 +1,25 @@
+"""installments_payments (grain mịn nhất — từng lần trả) -> 1 dòng/SK_ID_CURR.
+
+Thêm 2 cột derived ở mức dòng TRƯỚC khi agg (bắt buộc phải làm ở đây vì đây là
+tín hiệu hành vi trả nợ quan trọng nhất — agg riêng AMT_INSTALMENT/AMT_PAYMENT
+hay DAYS_INSTALMENT/DAYS_ENTRY_PAYMENT không tái tạo lại được độ trễ/thiếu hụt
+của từng lần trả cụ thể):
+  DAYS_LATE     = DAYS_ENTRY_PAYMENT - DAYS_INSTALMENT   (>0 = trả trễ)
+  PAYMENT_DIFF  = AMT_INSTALMENT - AMT_PAYMENT           (>0 = trả thiếu)
+"""
+from __future__ import annotations
+
+import pandas as pd
+
+from .aggregations import aggregate_numeric, group_size
+
+
+def aggregate_installments(installments: pd.DataFrame) -> pd.DataFrame:
+    df = installments.copy()
+    df["DAYS_LATE"] = df["DAYS_ENTRY_PAYMENT"] - df["DAYS_INSTALMENT"]
+    df["PAYMENT_DIFF"] = df["AMT_INSTALMENT"] - df["AMT_PAYMENT"]
+
+    num_agg = aggregate_numeric(df, "SK_ID_CURR", "INSTAL", exclude=("SK_ID_PREV",))
+    cnt = group_size(df, "SK_ID_CURR", "INSTAL", out_name="RECORDS")
+    n_prev = df.groupby("SK_ID_CURR")["SK_ID_PREV"].nunique().rename("INSTAL_NUNIQUE_PREV").to_frame()
+    return pd.concat([cnt, n_prev, num_agg], axis=1)
