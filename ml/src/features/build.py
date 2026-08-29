@@ -1,9 +1,9 @@
-"""Orchestrator: ghép 7 bảng Home Credit -> 1 bảng phẳng 1 dòng/applicant.
+"""Orchestrator: join the 7 Home Credit tables into one flat table, one row per applicant.
 
-`FeaturePipeline` đóng gói toàn bộ transform (categories cố định lúc fit trên
-train, áp lại y hệt lúc transform) — đây là ranh giới duy nhất giữa ml/ và
-backend/ (xem docs/NOTES.md mục 4): backend chỉ load `feature_pipeline.pkl`,
-KHÔNG import gì từ ml/src/train*.py.
+`FeaturePipeline` wraps the whole transform (categories fixed at fit time on train, then
+reapplied identically at transform time). This is the only boundary between ml/ and
+backend/ (see docs/NOTES.md section 5): the backend just loads `feature_pipeline.pkl` and
+imports nothing from ml/src/train*.py.
 """
 from __future__ import annotations
 
@@ -44,7 +44,7 @@ def load_raw_tables(data_dir: Path = DATA_DIR) -> dict[str, pd.DataFrame]:
 
 
 class FeaturePipeline:
-    """`fit` trên tập train một lần; `transform` tái dùng y hệt lúc serve 1 applicant."""
+    """`fit` once on train; `transform` is reused verbatim when serving a single applicant."""
 
     def __init__(
         self,
@@ -75,9 +75,9 @@ class FeaturePipeline:
 
     def transform(self, tables: dict[str, pd.DataFrame]) -> pd.DataFrame:
         app = tables["application"].copy()
-        # Sentinel lỗi data nổi tiếng của Home Credit: 365243 = "không áp dụng"
-        # (~18% dòng, chủ yếu hưu trí) — dọn về NaN, KHÔNG phải impute (không suy
-        # đoán giá trị, chỉ sửa placeholder sai thành missing đúng nghĩa).
+        # Home Credit's well-known data sentinel: 365243 = "not applicable" (~18% of
+        # rows, mostly retirees). Cleaned to NaN, which is NOT imputation: no value is
+        # guessed, a wrong placeholder is just turned into a proper missing value.
         if "DAYS_EMPLOYED" in app.columns:
             app["DAYS_EMPLOYED"] = app["DAYS_EMPLOYED"].replace(365243, np.nan)
         for c, cats in self.app_categories.items():
@@ -110,7 +110,7 @@ class FeaturePipeline:
 
 
 def build_features(data_dir: Path = DATA_DIR) -> tuple[FeaturePipeline, pd.DataFrame]:
-    """Fit pipeline trên train + transform -> (pipeline, bảng phẳng 1 dòng/applicant)."""
+    """Fit the pipeline on train and transform -> (pipeline, flat table, one row per applicant)."""
     tables = load_raw_tables(data_dir)
     pipeline = FeaturePipeline.fit(tables)
     flat = pipeline.transform(tables)
@@ -130,14 +130,14 @@ def main() -> None:
     print(f"Saved pipeline + feature_names.json + train_features.parquet -> {ARTIFACTS_DIR}")
 
 
-# CỐ TÌNH không có `if __name__ == "__main__":` ở đây. Module này ĐỊNH NGHĨA
-# FeaturePipeline — nếu chạy trực tiếp bằng `python -m ml.src.features.build`,
-# Python nạp module này AS `__main__`, khiến FeaturePipeline.__module__ bị ghi
-# thành "__main__" lúc pickle, và feature_pipeline.pkl KHÔNG unpickle được từ
-# bất kỳ entry point nào khác (backend, pytest, notebook...) — lỗi thật đã gặp.
-# Dùng `python -m ml.src.run_build_features` (chỉ import main(), không định
-# nghĩa class) để build.py luôn được nạp như module bình thường.
+# There is DELIBERATELY no `if __name__ == "__main__":` here. This module DEFINES
+# FeaturePipeline, so running it directly via `python -m ml.src.features.build` makes
+# Python load it AS `__main__`, which records FeaturePipeline.__module__ as "__main__"
+# in the pickle. feature_pipeline.pkl then CANNOT be unpickled from any other entry
+# point (backend, pytest, notebooks, ...). This actually happened.
+# Use `python -m ml.src.run_build_features` (which only imports main() and defines no
+# classes) so build.py is always loaded as a normal module.
 
 #
-# 2026-08-28: khối `if __name__ == "__main__": main()` từng bị thêm lại vào
-# đây (mâu thuẫn với chính comment ở trên) — đã xoá. ĐỪNG thêm lại.
+# 2026-08-28: an `if __name__ == "__main__": main()` block was re-added here at one
+# point, contradicting the comment right above it. Removed. DO NOT add it back.

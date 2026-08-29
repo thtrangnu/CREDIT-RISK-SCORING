@@ -1,15 +1,15 @@
-"""Fixture dùng 2 applicant THẬT (SK_ID_CURR 100002, 100006), lọc trực tiếp
-từ 7 CSV thật — KHÔNG tự tay dựng DataFrame synthetic.
+"""Fixtures built from 2 REAL applicants (SK_ID_CURR 100002 and 100006), filtered
+straight out of the real CSVs. No hand-built synthetic DataFrames.
 
-Lý do: FeaturePipeline thật fit trên toàn bộ data thật (mọi cột categorical
-CỐ ĐỊNH lúc fit, mọi cột numeric được aggregate_numeric tự suy ra từ CHÍNH df
-truyền vào). Tự dựng bảng tay thiếu bất kỳ cột nào (categorical HAY numeric)
-đều làm feature_names.json lệch với cột thật sự tính được -> KeyError khi
-`flat[feature_names]` — đã gặp bug này 2 lần (thiếu cột categorical app, rồi
-thiếu cột numeric bureau/prev/pos/instal/cc) trước khi đổi sang cách này.
+Why: the real FeaturePipeline is fit on the full real dataset (every categorical column
+is FIXED at fit time, every numeric column is inferred by aggregate_numeric from the df
+it was given). A hand-built table missing any column, categorical OR numeric, makes
+feature_names.json disagree with what can actually be computed, which raises KeyError at
+`flat[feature_names]`. That happened twice (first a missing app categorical column, then
+missing numeric columns from bureau/prev/pos/instal/cc) before switching to this approach.
 
-Fixture session-scoped nên chi phí quét 2.5GB CSV (đọc theo chunk, chỉ giữ
-dòng khớp SK_ID_CURR) chỉ trả 1 lần cho cả lần chạy test, không phải mỗi test.
+The fixture is session-scoped, so the cost of scanning 2.5GB of CSV (read in chunks,
+keeping only rows matching SK_ID_CURR) is paid once per test run rather than per test.
 """
 import sys
 from pathlib import Path
@@ -24,8 +24,8 @@ from backend.app.config import ARTIFACTS_DIR, DATA_DIR  # noqa: E402
 from backend.app.data.source import RAW_FILES, RawTableStore  # noqa: E402
 from backend.app.scorer import Scorer  # noqa: E402
 
-APPLICANT_WITH_HISTORY = 100002  # TARGET=1, có bureau + previous_application + pos + instalments
-APPLICANT_NO_HISTORY = 100006  # TARGET=0, không có lịch sử ở 5 bảng phụ
+APPLICANT_WITH_HISTORY = 100002  # TARGET=1, has bureau + previous_application + pos + installments
+APPLICANT_NO_HISTORY = 100006  # TARGET=0, no history in the 5 satellite tables
 
 CHUNK_SIZE = 200_000
 
@@ -67,6 +67,6 @@ def synthetic_store(synthetic_tables) -> RawTableStore:
 
 @pytest.fixture(scope="session")
 def real_scorer() -> Scorer:
-    """Artifact THẬT (model.txt/feature_pipeline.pkl/calibrator.pkl) — Block 2-5 phải
-    đã chạy xong (ml/artifacts/ tồn tại) để fixture này pass."""
+    """The REAL artifacts (model.txt/feature_pipeline.pkl/calibrator.pkl). Blocks 2-5 must
+    already have run (ml/artifacts/ must exist) for this fixture to work."""
     return Scorer(ARTIFACTS_DIR, model_version="test-version")

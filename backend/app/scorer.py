@@ -1,13 +1,13 @@
-"""Chấm điểm 1 applicant — CHỈ load artifact từ ml/artifacts/, KHÔNG train.
+"""Score a single applicant. ONLY loads artifacts from ml/artifacts/, never trains.
 
-Biên giới tầng (docs/NOTES.md mục 4, "KHÔNG import từ ml/src/train.py"): import ở
-đây giới hạn trong `ml.src.features.build` (FeaturePipeline — feature
-CONTRACT thuần transform, không train), `ml.src.explain` (SHAP inference
-thuần, không train) và `ml.src.reason_codes` (dữ liệu/hàm thuần). Backend
-KHÔNG BAO GIỜ import `ml.src.train`, `ml.src.train_engineered`, hay
-`ml.src.calibrate` — 3 module đó là orchestration TRAINING thật sự.
+Layer boundary (docs/NOTES.md section 5, "never imports from ml/src/train.py"): imports
+here are limited to `ml.src.features.build` (FeaturePipeline, the feature CONTRACT, a
+pure transform with no training), `ml.src.explain` (pure SHAP inference, no training),
+and `ml.src.reason_codes` (pure data and functions). The backend NEVER imports
+`ml.src.train`, `ml.src.train_engineered`, or `ml.src.calibrate`, since those three are
+the actual TRAINING orchestration.
 
-model.txt/calibrator.pkl tự chứa toàn bộ tham số đã học; scorer chỉ predict.
+model.txt and calibrator.pkl carry every learned parameter; the scorer only predicts.
 """
 from __future__ import annotations
 
@@ -24,11 +24,15 @@ from ml.src.features.build import FeaturePipeline
 
 from .reason_codes import build_reason_codes
 
-BASE_DEFAULT_RATE = 0.0807  # default_rate quan sát trên application_train — mốc so sánh risk tier
+BASE_DEFAULT_RATE = 0.0807  # observed default rate in application_train, the risk-tier reference
 
 
 def risk_tier(pd_score: float, base_rate: float = BASE_DEFAULT_RATE) -> str:
-    """Risk tier tương đối so với base rate quần thể, không phải ngưỡng tuỳ tiện."""
+    """Risk tier relative to the population base rate rather than an arbitrary threshold.
+
+    The returned labels are Vietnamese product values: they are shown in the UI and stored
+    in the audit trail, so they are intentionally not translated.
+    """
     if pd_score < base_rate / 2:
         return "Thấp"
     if pd_score < base_rate * 2:
@@ -47,9 +51,9 @@ class Scorer:
         self.calibrator_model = calibrator["model"]
         with open(artifacts_dir / "feature_names.json") as f:
             self.feature_names: list[str] = json.load(f)
-        # Dựng explainer 1 LẦN lúc startup: duyệt toàn bộ ~1400 cây là phần đắt
-        # nhất của SHAP, đắt hơn hẳn phép tính cho 1 dòng. Trước đây nó bị dựng
-        # lại trong mỗi request /api/score.
+        # Build the explainer ONCE at startup. Walking all ~1400 trees is the expensive
+        # part of SHAP, far more than the computation for a single row. This used to be
+        # rebuilt on every /api/score request.
         self.explainer = build_explainer(self.model)
 
     def _predict_calibrated(self, prob_uncalibrated: np.ndarray) -> np.ndarray:
@@ -59,8 +63,9 @@ class Scorer:
 
     def score(self, tables: dict[str, pd.DataFrame], top_k_reasons: int = 5) -> dict:
         flat = self.pipeline.transform(tables)
-        # LUÔN reindex theo feature_names.json — Booster.predict() khớp cột DataFrame
-        # theo VỊ TRÍ chứ không theo tên (đã verify tay ở Block 6, xem ml/src/explain.py).
+        # ALWAYS reindex by feature_names.json. Booster.predict() matches DataFrame
+        # columns BY POSITION, not by name (verified by hand in Block 6, see
+        # ml/src/explain.py).
         X = flat[self.feature_names]
 
         prob_uncalibrated = self.model.predict(X)
@@ -68,8 +73,9 @@ class Scorer:
 
         shap_values, base_values = compute_shap_values(self.model, X, explainer=self.explainer)
         reasons = build_reason_codes(self.feature_names, shap_values[0], X.iloc[0].values, top_k=top_k_reasons)
-        # base_value + raw_margin: neo cho waterfall chart ở frontend — reasons chỉ
-        # có top-K feature, cần 2 số này để cộng dồn "các feature còn lại" cho khớp.
+        # base_value + raw_margin anchor the frontend waterfall chart. `reasons` only
+        # carries the top-K features, so these two numbers are needed to make the
+        # "everything else" bar add up correctly.
         base_value = float(base_values[0])
         raw_margin = float(base_value + shap_values[0].sum())
 

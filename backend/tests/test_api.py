@@ -13,9 +13,9 @@ from backend.tests.conftest import APPLICANT_NO_HISTORY, APPLICANT_WITH_HISTORY
 
 @pytest.fixture
 def client(synthetic_store, real_scorer):
-    # StaticPool: mặc định mỗi connection mới vào "sqlite:///:memory:" là 1 DB
-    # RIÊNG BIỆT (rỗng) — không dùng StaticPool thì create_all() và insert sau
-    # đó chạy trên 2 "DB" khác nhau -> "no such table".
+    # StaticPool: by default every new connection to "sqlite:///:memory:" is a SEPARATE
+    # empty database. Without StaticPool, create_all() and the later inserts would run
+    # against two different "databases" -> "no such table".
     engine = create_engine(
         "sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool
     )
@@ -66,7 +66,7 @@ def test_score_known_applicant_returns_valid_response_and_writes_history(client)
     assert body["sk_id_curr"] == APPLICANT_WITH_HISTORY
     assert 0.0 <= body["pd_score"] <= 1.0
     assert len(body["reasons"]) == 5
-    assert body["target_actual"] == 1  # SK_ID_CURR=100002 thật có TARGET=1
+    assert body["target_actual"] == 1  # SK_ID_CURR=100002 really does have TARGET=1
 
     history = client.get("/api/history").json()
     assert history["total"] == 1

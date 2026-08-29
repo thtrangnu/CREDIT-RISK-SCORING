@@ -68,7 +68,7 @@ def test_aggregate_categorical_shares_sum_to_one_per_group():
 
 
 def test_aggregate_categorical_with_fixed_categories_keeps_full_column_set():
-    """Chống train-serve skew: applicant chỉ có 1 category vẫn phải sinh đủ cột dummy."""
+    """Anti train-serve skew: an applicant with only one category must still emit every dummy column."""
     fit_domain = {"STATUS": ["Active", "Bad_debt", "Closed"]}
 
     serve_df = pd.DataFrame({"SK_ID_CURR": [99], "STATUS": ["Closed"]})

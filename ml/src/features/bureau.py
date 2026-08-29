@@ -1,9 +1,9 @@
-"""bureau + bureau_balance -> 1 dòng/SK_ID_CURR.
+"""bureau + bureau_balance -> one row per SK_ID_CURR.
 
-2-level aggregation (phần khó nhất của Block 2):
-  bureau_balance (grain = SK_ID_BUREAU x tháng)
+Two-level aggregation, the hardest part of Block 2:
+  bureau_balance (grain = SK_ID_BUREAU x month)
     -> groupby SK_ID_BUREAU                                   [level 1]
-    -> merge vào bureau (grain = SK_ID_BUREAU)
+    -> merge into bureau (grain = SK_ID_BUREAU)
     -> groupby SK_ID_CURR                                     [level 2]
 """
 from __future__ import annotations
@@ -12,16 +12,17 @@ import pandas as pd
 
 from .aggregations import aggregate_categorical, aggregate_numeric, group_size
 
-DPD_STATUSES = {"1", "2", "3", "4", "5"}  # '0'=đúng hạn, 'C'=đã đóng, 'X'=không rõ
+DPD_STATUSES = {"1", "2", "3", "4", "5"}  # '0'=on time, 'C'=closed, 'X'=unknown
 
-# Domain đóng theo data dictionary Home Credit — hardcode thay vì suy ra từ data,
-# để aggregate_bureau_balance luôn ra ĐÚNG bộ cột BB_STATUS_*_SHARE dù input là
-# toàn bộ train hay chỉ lịch sử của 1 applicant lẻ lúc serve (chống skew).
+# A closed domain per the Home Credit data dictionary. Hardcoded rather than inferred
+# from the data, so aggregate_bureau_balance always produces the SAME set of
+# BB_STATUS_*_SHARE columns whether the input is all of train or the history of a single
+# applicant at serving time (anti-skew).
 BB_STATUS_CATEGORIES = ["0", "1", "2", "3", "4", "5", "C", "X"]
 
 
 def aggregate_bureau_balance(bureau_balance: pd.DataFrame) -> pd.DataFrame:
-    """Level 1: agg lịch sử tháng của mỗi khoản bureau -> 1 dòng/SK_ID_BUREAU."""
+    """Level 1: aggregate each bureau credit's monthly history -> one row per SK_ID_BUREAU."""
     bb = bureau_balance.copy()
     bb["DPD_FLAG"] = bb["STATUS"].isin(DPD_STATUSES).astype(int)
 
@@ -41,10 +42,10 @@ def aggregate_bureau(
     bureau_balance: pd.DataFrame | None = None,
     categories: dict[str, list] | None = None,
 ) -> pd.DataFrame:
-    """Level 2: gắn bb_agg vào bureau rồi agg về SK_ID_CURR -> 1 dòng/applicant.
+    """Level 2: attach bb_agg to bureau, then aggregate to SK_ID_CURR -> one row per applicant.
 
-    `categories`: domain cố định (lúc fit) cho BUREAU_CAT_COLS — xem
-    `aggregations.infer_categories` / chống train-serve skew.
+    `categories`: the fit-time domain for BUREAU_CAT_COLS. See
+    `aggregations.infer_categories` and the training-serving skew note.
     """
     df = bureau.copy()
     if bureau_balance is not None:

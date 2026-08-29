@@ -15,7 +15,7 @@ def test_undeclared_features_default_to_zero():
 
 
 def test_categorical_feature_constraint_is_forced_to_zero():
-    """LightGBM không hỗ trợ monotonic constraint có ý nghĩa cho categorical split."""
+    """LightGBM has no meaningful monotonic constraint for categorical splits."""
     columns = ["EXT_SOURCE_1", "NAME_CONTRACT_TYPE"]
     declared = {"EXT_SOURCE_1": -1, "NAME_CONTRACT_TYPE": 1}
     out = build_monotone_constraints(columns, cat_cols={"NAME_CONTRACT_TYPE"}, declared=declared)

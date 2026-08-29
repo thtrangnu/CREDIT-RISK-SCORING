@@ -32,8 +32,8 @@ def get_insights() -> InsightsResponse:
             )
         )
 
-    # policy/fairness chỉ có sau khi chạy ml/src/export_metrics_summary.py bản mới.
-    # Dùng .get() để backend vẫn chạy được với artifact cũ thay vì 500.
+    # policy/fairness only exist after running the newer ml/src/export_metrics_summary.py.
+    # Use .get() so the backend still serves older artifacts instead of returning a 500.
     policy = metrics.get("policy")
     fairness = metrics.get("fairness")
 

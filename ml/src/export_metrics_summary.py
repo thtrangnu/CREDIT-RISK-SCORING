@@ -1,14 +1,15 @@
-"""Xuất ml/artifacts/metrics_summary.json từ artifact đã có (KHÔNG train lại) —
-backend/insights router đọc file này thay vì parse model_card.md.
+"""Write ml/artifacts/metrics_summary.json from existing artifacts. Retrains nothing.
+The backend insights router reads this file instead of parsing model_card.md.
 
-Gồm 4 nhóm:
-  1. Chất lượng xếp hạng   — AUC/Gini, baseline vs engineered
-  2. Calibration           — Brier/ECE, có cả quantile binning (chống ảo giác
-                             do uniform bin nuốt hết mass ở vùng PD thấp)
-  3. Chính sách (Block 9)  — cutoff table: duyệt X% -> vỡ nợ giảm bao nhiêu.
-                             ĐÂY là con số nói chuyện được với business.
-  4. Phân khúc/fairness    — giới tính & nhóm tuổi (thuộc tính được bảo vệ theo
-                             ECOA) + adverse impact ratio.
+Four groups:
+  1. Ranking quality   - AUC/Gini, baseline vs engineered
+  2. Calibration       - Brier/ECE, including quantile binning (which avoids the
+                         illusion created when a uniform bin swallows all the mass
+                         in the low-PD region)
+  3. Policy (Block 9)  - cutoff table: approve X% -> how much default risk drops.
+                         THIS is the number that means something to the business.
+  4. Segments/fairness - gender and age band (protected attributes under ECOA)
+                         plus adverse impact ratios.
 """
 from __future__ import annotations
 
@@ -24,18 +25,18 @@ from .policy import (REFERENCE_APPROVAL_RATE, adverse_impact_ratio, age_bands,
                      cutoff_table, segment_report)
 from .train_engineered import CACHED_FEATURES_PATH, CONFIG_PATH, load_config
 
-# Cột dùng cho báo cáo phân khúc — thuộc tính được bảo vệ trong tín dụng.
+# Columns used for segment reporting: protected attributes in lending.
 SEGMENT_COLS = ["CODE_GENDER", "DAYS_BIRTH"]
 
 
 def json_safe(obj):
-    """NaN -> None, đệ quy.
+    """Recursively map NaN -> None.
 
-    BẮT BUỘC: `json.dump` ghi NaN ra literal `NaN`, không phải JSON hợp lệ.
-    `json.loads` của Python vẫn đọc được nên lỗi im lặng ở tầng ml, nhưng
-    `JSON.parse` của trình duyệt thì NÉM LỖI -> trang Insights trắng xoá.
-    NaN xuất hiện thật ở đây: AUC của nhóm chỉ có 1 lớp (CODE_GENDER='XNA',
-    4 dòng, toàn TARGET=0).
+    MANDATORY: `json.dump` writes NaN as the literal `NaN`, which is not valid JSON.
+    Python's `json.loads` still reads it, so the failure is silent in the ML layer,
+    but the browser's `JSON.parse` THROWS and the Insights page goes blank.
+    NaN really does occur here: the AUC of a single-class group (CODE_GENDER='XNA',
+    4 rows, all TARGET=0).
     """
     if isinstance(obj, dict):
         return {k: json_safe(v) for k, v in obj.items()}
@@ -47,7 +48,7 @@ def json_safe(obj):
 
 
 def calibration_block(y: np.ndarray, raw: np.ndarray, calibrated: np.ndarray) -> dict:
-    """Report ECE ở nhiều cách chia bin — kết luận chỉ đáng tin nếu bền qua cả 3."""
+    """Report ECE under several binning schemes; a conclusion only counts if it holds in all three."""
     out = {
         "brier_raw": brier_score(y, raw),
         "brier_calibrated": brier_score(y, calibrated),
@@ -59,7 +60,7 @@ def calibration_block(y: np.ndarray, raw: np.ndarray, calibrated: np.ndarray) ->
     }.items():
         out[f"{key}_raw"] = expected_calibration_error(y, raw, **kwargs)
         out[f"{key}_calibrated"] = expected_calibration_error(y, calibrated, **kwargs)
-    # Giữ tên cũ cho tương thích ngược với frontend đã build.
+    # Keep the old key names for backwards compatibility with an already-built frontend.
     out["ece_raw"] = out["ece_uniform_10_raw"]
     out["ece_calibrated"] = out["ece_uniform_10_calibrated"]
     return out
@@ -110,13 +111,13 @@ def main() -> None:
     with open(ARTIFACTS_DIR / "metrics_summary.json", "w") as f:
         json.dump(json_safe(summary), f, indent=2, allow_nan=False)
 
-    print("=== CUTOFF POLICY (OOF đã hiệu chỉnh) ===")
+    print("=== CUTOFF POLICY (calibrated OOF) ===")
     print(policy.round(4).to_string(index=False))
-    print("\n=== PHÂN KHÚC — GIỚI TÍNH ===")
+    print("\n=== SEGMENTS - GENDER ===")
     print(gender.round(4).to_string(index=False))
-    print("\n=== PHÂN KHÚC — NHÓM TUỔI ===")
+    print("\n=== SEGMENTS - AGE BAND ===")
     print(age.round(4).to_string(index=False))
-    print(f"\nAdverse impact ratio (4/5ths rule, ngưỡng 0.8): "
+    print(f"\nAdverse impact ratio (4/5ths rule, threshold 0.8): "
           f"gender={summary['fairness']['adverse_impact_ratio_gender']:.4f}  "
           f"age={summary['fairness']['adverse_impact_ratio_age']:.4f}")
     print(f"\nSaved -> {ARTIFACTS_DIR / 'metrics_summary.json'}")

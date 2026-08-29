@@ -1,7 +1,7 @@
-"""Hàm aggregation tái dùng cho mọi bảng phụ (bureau, previous_application, ...).
+"""Reusable aggregation helpers for every satellite table (bureau, previous_application, ...).
 
-Quy ước đặt tên cột output: {prefix}_{col}_{FUNC}, luôn upper-case phần FUNC/value
-để tránh đụng tên khi merge nhiều bảng vào application.
+Output column naming convention: {prefix}_{col}_{FUNC}, with the FUNC/value part always
+upper-cased to avoid collisions when several tables get merged into application.
 """
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ def aggregate_numeric(
     funcs: tuple[str, ...] = NUMERIC_FUNCS,
     exclude: tuple[str, ...] = (),
 ) -> pd.DataFrame:
-    """Agg mọi cột numeric (trừ group_key/exclude) theo group_key, 1 dòng/group."""
+    """Aggregate every numeric column (except group_key/exclude) by group_key, one row per group."""
     num_cols = [
         c for c in df.select_dtypes(include=[np.number]).columns
         if c != group_key and c not in exclude
@@ -32,11 +32,11 @@ def aggregate_numeric(
 
 
 def infer_categories(df: pd.DataFrame, cat_cols: list[str]) -> dict[str, list]:
-    """Chụp lại domain giá trị của mỗi cột categorical LÚC FIT (train).
+    """Capture the value domain of each categorical column AT FIT TIME (train).
 
-    Bắt buộc dùng lại domain này ở transform (serve) để pd.get_dummies luôn
-    sinh đúng bộ cột dummy — tránh training-serving skew khi 1 applicant lẻ
-    lúc serve không có đủ mọi category so với lúc train.
+    Reusing this domain at transform (serving) time is mandatory so pd.get_dummies always
+    produces the same set of dummy columns. Without it you get training-serving skew, since
+    a single applicant at serving time will not carry every category seen during training.
     """
     return {c: sorted(df[c].dropna().unique().tolist()) for c in cat_cols}
 
@@ -48,10 +48,11 @@ def aggregate_categorical(
     cat_cols: list[str] | None = None,
     categories: dict[str, list] | None = None,
 ) -> pd.DataFrame:
-    """Tỉ lệ mỗi category trong group (one-hot rồi lấy mean = share theo group).
+    """Share of each category within a group (one-hot then mean = per-group share).
 
-    `categories`: domain cố định lúc fit (xem `infer_categories`). Nếu không
-    truyền, domain được suy ra ngay từ `df` hiện tại (chỉ dùng cho khám phá/test).
+    `categories`: the domain fixed at fit time (see `infer_categories`). If omitted, the
+    domain is inferred from the current `df`, which is only appropriate for exploration
+    and tests.
     """
     if cat_cols is None:
         cat_cols = df.select_dtypes(include=["object", "category"]).columns.tolist()
@@ -71,13 +72,13 @@ def aggregate_categorical(
 
 
 def group_size(df: pd.DataFrame, group_key: str, prefix: str, out_name: str = "COUNT") -> pd.DataFrame:
-    """Số dòng mỗi group (vd: số khoản bureau, số lần vay trước)."""
+    """Row count per group (e.g. number of bureau credits, number of previous loans)."""
     s = df.groupby(group_key).size().rename(f"{prefix}_{out_name}")
     return s.to_frame()
 
 
 def merge_all(base: pd.DataFrame, key: str, *others: pd.DataFrame) -> pd.DataFrame:
-    """Merge nhiều bảng đã agg (index=key) vào base theo left join, giữ 1 dòng/key."""
+    """Left-join several aggregated tables (index=key) onto base, keeping one row per key."""
     out = base
     for other in others:
         out = out.merge(other, how="left", left_on=key, right_index=True)

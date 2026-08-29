@@ -13,8 +13,9 @@ def test_assemble_filters_all_tables_to_single_applicant(synthetic_store):
 
 
 def test_assemble_follows_bureau_balance_chain_via_sk_id_bureau(synthetic_store):
-    """bureau_balance không có SK_ID_CURR — phải lọc gián tiếp qua SK_ID_BUREAU của applicant đó,
-    KHÔNG lẫn lịch sử bureau_balance của SK_ID_BUREAU thuộc applicant khác."""
+    """bureau_balance has no SK_ID_CURR, so it must be filtered indirectly through that
+    applicant's SK_ID_BUREAU values, without pulling in bureau_balance history belonging to
+    another applicant's credits."""
     tables = assemble_applicant_tables(synthetic_store, sk_id_curr=APPLICANT_WITH_HISTORY)
     assert len(tables["bureau_balance"]) > 0
     assert set(tables["bureau_balance"]["SK_ID_BUREAU"]) <= set(tables["bureau"]["SK_ID_BUREAU"])

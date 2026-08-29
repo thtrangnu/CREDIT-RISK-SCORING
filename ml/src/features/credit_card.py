@@ -1,4 +1,4 @@
-"""credit_card_balance (sao kê thẻ theo tháng) -> 1 dòng/SK_ID_CURR."""
+"""credit_card_balance (monthly card statements) -> one row per SK_ID_CURR."""
 from __future__ import annotations
 
 import pandas as pd

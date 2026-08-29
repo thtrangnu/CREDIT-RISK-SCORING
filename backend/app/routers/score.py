@@ -39,7 +39,7 @@ def score_applicant(
     db: Session = Depends(get_db),
 ):
     if not store.exists(sk_id_curr):
-        raise HTTPException(status_code=404, detail=f"SK_ID_CURR={sk_id_curr} không tồn tại")
+        raise HTTPException(status_code=404, detail=f"SK_ID_CURR={sk_id_curr} not found")
 
     tables = assemble_applicant_tables(store, sk_id_curr)
     target_raw = tables["application"].iloc[0].get("TARGET")

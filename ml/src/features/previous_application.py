@@ -1,4 +1,4 @@
-"""previous_application (đơn vay HC trước đó) -> 1 dòng/SK_ID_CURR."""
+"""previous_application (earlier Home Credit applications) -> one row per SK_ID_CURR."""
 from __future__ import annotations
 
 import numpy as np
@@ -6,7 +6,7 @@ import pandas as pd
 
 from .aggregations import aggregate_categorical, aggregate_numeric, group_size
 
-# 365243 là sentinel "không áp dụng" của Home Credit cho các cột DAYS_* này.
+# 365243 is Home Credit's "not applicable" sentinel for these DAYS_* columns.
 DAYS_SENTINEL_COLS = (
     "DAYS_FIRST_DRAWING",
     "DAYS_FIRST_DUE",
@@ -16,8 +16,9 @@ DAYS_SENTINEL_COLS = (
 )
 
 
-# Cardinality thấp/vừa, đủ tín hiệu — bỏ các cột cardinality cao (PRODUCT_COMBINATION,
-# NAME_GOODS_CATEGORY, ...) để tránh nổ số cột dummy (MacBook 8GB RAM, xem docs/NOTES.md).
+# Low/medium cardinality with enough signal. High-cardinality columns
+# (PRODUCT_COMBINATION, NAME_GOODS_CATEGORY, ...) are dropped to stop the dummy column
+# count exploding (8GB MacBook, see docs/NOTES.md).
 PREV_CAT_COLS = [
     "NAME_CONTRACT_TYPE",
     "NAME_CONTRACT_STATUS",

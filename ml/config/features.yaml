@@ -1,43 +1,44 @@
-# Monotonic constraints cho LightGBM (Block 3).
+# Monotonic constraints for LightGBM (Block 3).
 #
-# Quy ước: +1 = feature tăng -> P(default) không được giảm (chỉ tăng/giữ nguyên)
-#          -1 = feature tăng -> P(default) không được tăng (chỉ giảm/giữ nguyên)
-#           0 (mặc định, không cần khai báo) = không ràng buộc
+# Convention: +1 = as the feature increases, P(default) must not decrease
+#             -1 = as the feature increases, P(default) must not increase
+#              0 (default, no declaration needed) = unconstrained
 #
-# Trong lending (regulated), monotonic constraints không chỉ là kỹ thuật regularization
-# — chúng đảm bảo model không học ra quan hệ ngược đời (vd: thu nhập cao hơn lại bị
-# chấm rủi ro cao hơn), điều bắt buộc phải giải trình được cho adverse action reason codes.
+# In regulated lending, monotonic constraints are more than a regularization trick. They
+# guarantee the model never learns a nonsensical relationship (e.g. higher income scoring
+# as higher risk), which has to be defensible for adverse action reason codes.
 #
-# CHỈ ràng buộc feature có lý do domain vững, đơn điệu rõ ràng theo hiểu biết rủi ro tín
-# dụng phổ thông. KHÔNG ràng buộc feature mà quan hệ với rủi ro thực tế là mơ hồ/phi tuyến
-# (vd: AMT_CREDIT, AMT_ANNUITY — khoản vay lớn có thể là khách tốt được duyệt nhiều hơn,
-# hoặc khách quá tải nợ — không có hướng đơn điệu đáng tin).
+# ONLY constrain features with a solid domain rationale and a direction that is obvious
+# under ordinary credit-risk understanding. Do NOT constrain features whose real
+# relationship with risk is ambiguous or non-monotonic (e.g. AMT_CREDIT, AMT_ANNUITY: a
+# large loan can mean a good customer approved for more, or a customer drowning in debt,
+# so there is no trustworthy direction).
 
 monotone_constraints:
-  # Điểm tín dụng ngoài (EXT_SOURCE_*): điểm càng cao -> hồ sơ càng tốt -> rủi ro càng thấp.
+  # External credit scores (EXT_SOURCE_*): higher score -> better profile -> lower risk.
   EXT_SOURCE_1: -1
   EXT_SOURCE_2: -1
   EXT_SOURCE_3: -1
 
-  # Nhân khẩu học / hồ sơ hiện tại.
-  DAYS_BIRTH: 1          # càng gần 0 (ít âm hơn) = càng trẻ -> rủi ro cao hơn (giả định chuẩn ngành)
-  DAYS_EMPLOYED: 1        # càng gần 0 = thâm niên công việc càng ngắn -> rủi ro cao hơn
-  AMT_INCOME_TOTAL: -1    # thu nhập càng cao -> rủi ro càng thấp
-  REGION_RATING_CLIENT: 1          # rating vùng 1=tốt nhất, 3=xấu nhất (theo data dictionary) -> tăng = rủi ro tăng
+  # Demographics / current profile.
+  DAYS_BIRTH: 1          # closer to 0 (less negative) = younger -> higher risk (standard industry assumption)
+  DAYS_EMPLOYED: 1        # closer to 0 = shorter job tenure -> higher risk
+  AMT_INCOME_TOTAL: -1    # higher income -> lower risk
+  REGION_RATING_CLIENT: 1          # region rating 1=best, 3=worst (per data dictionary) -> higher = riskier
   REGION_RATING_CLIENT_W_CITY: 1
 
-  # Lịch sử tín dụng ở TCTD khác (bureau) — quá hạn càng nhiều/nặng -> rủi ro càng cao.
+  # Credit history at other institutions (bureau): more/heavier overdue -> higher risk.
   BUREAU_CREDIT_DAY_OVERDUE_MEAN: 1
   BUREAU_CREDIT_DAY_OVERDUE_MAX: 1
   BUREAU_AMT_CREDIT_SUM_OVERDUE_MEAN: 1
   BUREAU_AMT_CREDIT_SUM_OVERDUE_SUM: 1
 
-  # Hành vi trả góp trước đây (installments) — trả trễ/thiếu càng nhiều -> rủi ro càng cao.
+  # Past installment behaviour: more lateness/underpayment -> higher risk.
   INSTAL_DAYS_LATE_MEAN: 1
   INSTAL_DAYS_LATE_MAX: 1
   INSTAL_PAYMENT_DIFF_MEAN: 1
   INSTAL_PAYMENT_DIFF_SUM: 1
 
-  # POS/cash trước đây — số ngày quá hạn (DPD) càng cao -> rủi ro càng cao.
+  # Past POS/cash: higher days past due (DPD) -> higher risk.
   POS_SK_DPD_MEAN: 1
   POS_SK_DPD_MAX: 1

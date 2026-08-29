@@ -7,8 +7,8 @@ from .session import Base
 
 
 class ScoringHistory(Base):
-    """Audit trail: mỗi lần chấm điểm -> 1 dòng. model_version cho governance
-    (biết applicant được chấm bằng model nào nếu sau này có model mới)."""
+    """Audit trail: one row per scoring call. model_version exists for governance, so you
+    can tell which model scored a given applicant once newer models exist."""
 
     __tablename__ = "scoring_history"
 

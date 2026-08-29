@@ -62,7 +62,7 @@ class GlobalImportanceItem(BaseModel):
 
 
 class CutoffRow(BaseModel):
-    """1 dòng của bảng chính sách: duyệt bao nhiêu <-> vỡ nợ bao nhiêu."""
+    """One row of the policy table: how much you approve vs how much defaults."""
 
     approval_rate: float
     n_approved: int
@@ -74,14 +74,14 @@ class CutoffRow(BaseModel):
 
 
 class SegmentRow(BaseModel):
-    """1 phân khúc (giới tính / nhóm tuổi) ở ngưỡng duyệt tham chiếu."""
+    """One segment (gender / age band) at the reference approval rate."""
 
     group: str
     n: int
     bad_rate: float
     mean_pd: float
     calibration_gap: float
-    auc: float | None = None  # None khi nhóm chỉ có 1 lớp -> AUC vô nghĩa
+    auc: float | None = None  # None when the group has a single class, so AUC is undefined
     approval_rate: float
 
 
@@ -103,10 +103,10 @@ class InsightsResponse(BaseModel):
 
     global_importance: list[GlobalImportanceItem]
     monotonic_features: list[str]
-    # Giữ dict passthrough cho khối metric thuần số (AUC/Brier/ECE các biến thể) —
-    # nó là ảnh chụp trực tiếp của metrics_summary.json và còn tiếp tục thêm biến
-    # thể ECE mới. Ngược lại policy/fairness được TYPE hoá vì đó là contract mà
-    # frontend vẽ bảng lên, và vì OpenAPI nên mô tả được chúng.
+    # The purely numeric metric block (AUC/Brier/the ECE variants) stays a passthrough
+    # dict: it is a direct snapshot of metrics_summary.json and keeps gaining new ECE
+    # variants. policy/fairness are TYPED instead, because they are the contract the
+    # frontend renders tables from, and because OpenAPI should describe them.
     model_metrics: dict
     policy: PolicyBlock | None = None
     fairness: FairnessBlock | None = None

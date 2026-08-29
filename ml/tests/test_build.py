@@ -6,7 +6,7 @@ from ml.src.features.build import FeaturePipeline
 
 
 def _synthetic_tables() -> dict[str, pd.DataFrame]:
-    """3 applicants: #1 có đủ lịch sử 5 bảng phụ, #2 chỉ có 1 khoản bureau, #3 hoàn toàn mới."""
+    """3 applicants: #1 has history in all 5 satellite tables, #2 has one bureau credit, #3 is brand new."""
     application = pd.DataFrame({
         "SK_ID_CURR": [1, 2, 3],
         "TARGET": [0, 1, 0],
@@ -106,7 +106,7 @@ def test_applicant_with_no_history_gets_nan_not_zero():
 
 
 def test_days_employed_sentinel_cleaned_to_nan():
-    """365243 = sentinel 'không áp dụng' của Home Credit (chủ yếu hưu trí), phải thành NaN."""
+    """365243 is Home Credit's "not applicable" sentinel (mostly retirees); it must become NaN."""
     tables = _synthetic_tables()
     pipeline = FeaturePipeline.fit(tables)
     flat = pipeline.transform(tables)
@@ -123,12 +123,12 @@ def test_installments_derived_features_computed_before_aggregation():
     flat = pipeline.transform(tables)
 
     row1 = flat.loc[flat.SK_ID_CURR == 1].iloc[0]
-    # trả 1: đúng hạn & đủ tiền; trả 2: đúng hạn nhưng thiếu 100 -> tổng PAYMENT_DIFF = 100
+    # payment 1: on time and in full; payment 2: on time but 100 short -> total PAYMENT_DIFF = 100
     assert row1["INSTAL_PAYMENT_DIFF_SUM"] == pytest.approx(100.0)
 
 
 def test_serving_single_applicant_keeps_same_columns_as_fit_train():
-    """Chống train-serve skew: serve 1 applicant ít category hơn vẫn phải ra ĐÚNG bộ cột lúc fit."""
+    """Anti train-serve skew: serving one applicant with fewer categories must still produce the fit-time columns."""
     tables = _synthetic_tables()
     pipeline = FeaturePipeline.fit(tables)
     flat_train = pipeline.transform(tables)
@@ -160,27 +160,27 @@ def test_pipeline_save_load_roundtrip_produces_identical_transform(tmp_path):
     pd.testing.assert_frame_equal(flat_before, flat_after)
 
 
-def test_build_module_khong_co_main_guard():
-    """Regression: `if __name__ == "__main__"` trong build.py làm hỏng pickle.
+def test_build_module_has_no_main_guard():
+    """Regression: an `if __name__ == "__main__"` block in build.py breaks the pickle.
 
-    Chạy `python -m ml.src.features.build` sẽ nạp module này AS `__main__`, khiến
-    `FeaturePipeline.__module__ == "__main__"` lúc pickle -> feature_pipeline.pkl
-    không unpickle được từ backend/pytest. Bug này đã xảy ra 2 lần (lần 2 là do
-    khối guard bị thêm lại ngay dưới chính comment cảnh báo nó).
-    Entry point đúng: `python -m ml.src.run_build_features`.
+    Running `python -m ml.src.features.build` loads the module AS `__main__`, which makes
+    `FeaturePipeline.__module__ == "__main__"` at pickle time, so feature_pipeline.pkl
+    cannot be unpickled from the backend or pytest. This has happened twice (the second
+    time because the guard was re-added directly below the comment warning about it).
+    The correct entry point is `python -m ml.src.run_build_features`.
     """
     from pathlib import Path
 
     source = (Path(__file__).parent.parent / "src" / "features" / "build.py").read_text()
     executable_guards = [
         line for line in source.splitlines()
-        if line.startswith("if __name__")  # trong comment thì luôn có tiền tố '#'
+        if line.startswith("if __name__")  # inside a comment it is always prefixed with '#'
     ]
-    assert executable_guards == [], f"build.py không được có __main__ guard: {executable_guards}"
+    assert executable_guards == [], f"build.py must not contain a __main__ guard: {executable_guards}"
 
 
-def test_feature_pipeline_pickle_duoc_tu_module_dung():
-    """FeaturePipeline phải mang __module__ thật để unpickle được ở mọi entry point."""
+def test_feature_pipeline_pickles_from_the_right_module():
+    """FeaturePipeline must carry its real __module__ so it unpickles from any entry point."""
     from ml.src.features.build import FeaturePipeline
 
     assert FeaturePipeline.__module__ == "ml.src.features.build"

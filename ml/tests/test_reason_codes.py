@@ -48,8 +48,8 @@ def test_build_reason_codes_returns_top_k_sorted_by_absolute_shap():
 
 
 def test_build_reason_codes_handles_categorical_string_value_without_crashing():
-    """Cột categorical gốc (CODE_GENDER, ORGANIZATION_TYPE...) hoàn toàn có thể lọt
-    top-K SHAP của 1 applicant cụ thể — giá trị là string, KHÔNG được ép float()."""
+    """Raw categorical columns (CODE_GENDER, ORGANIZATION_TYPE, ...) can absolutely land in
+    a given applicant's top-K SHAP. The value is a string, so float() must not be forced."""
     feature_names = ["CODE_GENDER", "EXT_SOURCE_1"]
     shap_row = np.array([0.4, 0.1])
     values = np.array(["F", 0.65], dtype=object)

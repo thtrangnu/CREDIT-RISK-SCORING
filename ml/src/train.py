@@ -46,7 +46,7 @@ def main() -> None:
     params = {k: v for k, v in lgbm_cfg.items()
               if k not in ("num_boost_round", "early_stopping_rounds")}
     params["seed"] = seed
-    # KHÔNG scale_pos_weight / is_unbalance -> bảo vệ calibration baseline
+    # No scale_pos_weight / is_unbalance, to keep the baseline calibration clean
 
     X, y, cat_cols = load_data(DATA_PATH)
     print(f"shape={X.shape}  default_rate={y.mean():.4f}  #cat={len(cat_cols)}")
@@ -54,11 +54,12 @@ def main() -> None:
     oof = np.zeros(len(X))
     skf = StratifiedKFold(n_folds, shuffle=True, random_state=seed)
     for fold, (tr, va) in enumerate(skf.split(X, y), 1):
-        # HẠN CHẾ ĐÃ BIẾT (xem model_card.md mục 6): `dva` vừa là valid_set để
-        # early stopping, vừa là fold để lấy oof[va]. Số vòng lặp vì thế được chọn
-        # BẰNG chính dữ liệu nó sắp dự đoán -> OOF lạc quan nhẹ, không hoàn toàn
-        # sạch. Giữ nguyên có ý thức: baseline và engineered lệch y hệt nhau nên
-        # delta vẫn công bằng. Muốn OOF sạch thì tách 1 inner split từ `tr`.
+        # KNOWN LIMITATION (see model_card.md section 6): `dva` is both the
+        # valid_set driving early stopping and the fold supplying oof[va]. The
+        # iteration count is therefore chosen USING the very data it is about to
+        # predict -> mildly optimistic OOF, not a fully clean estimate. Kept
+        # deliberately: baseline and engineered are biased identically so the delta
+        # stays fair. For a clean OOF, carve an inner split out of `tr`.
         dtr = lgb.Dataset(X.iloc[tr], y[tr], categorical_feature=cat_cols)
         dva = lgb.Dataset(X.iloc[va], y[va], reference=dtr)
         model = lgb.train(

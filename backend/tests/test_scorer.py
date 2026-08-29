@@ -19,8 +19,8 @@ def test_score_returns_calibrated_probability_in_valid_range(real_scorer, synthe
 
 
 def test_score_raw_margin_matches_uncalibrated_probability_via_sigmoid(real_scorer, synthetic_store):
-    """base_value/raw_margin dùng để vẽ waterfall ở frontend — phải nhất quán với
-    pd_uncalibrated qua sigmoid (LightGBM objective='binary'), không phải số rời rạc."""
+    """base_value/raw_margin drive the frontend waterfall, so they must stay consistent with
+    pd_uncalibrated through the sigmoid (LightGBM objective='binary'), not an arbitrary number."""
     tables = assemble_applicant_tables(synthetic_store, sk_id_curr=APPLICANT_WITH_HISTORY)
     result = real_scorer.score(tables)
 
@@ -29,12 +29,12 @@ def test_score_raw_margin_matches_uncalibrated_probability_via_sigmoid(real_scor
 
 
 def test_score_reasons_are_json_serializable_even_with_categorical_top_feature(real_scorer, synthetic_store):
-    """Guard cho bug đã fix: reason value có thể là string (categorical) — không được crash."""
+    """Guards a fixed bug: a reason value can be a string (categorical) and must not crash."""
     tables = assemble_applicant_tables(synthetic_store, sk_id_curr=APPLICANT_NO_HISTORY)
     result = real_scorer.score(tables)
 
     assert len(result["reasons"]) == 5
-    json.dumps(result["reasons"])  # không được raise
+    json.dumps(result["reasons"])  # must not raise
 
 
 def test_score_applicant_with_no_bureau_history_still_scores(real_scorer, synthetic_store):

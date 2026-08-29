@@ -8,7 +8,7 @@ from ml.src.explain import compute_shap_values, explain_applicant, global_import
 
 @pytest.fixture
 def toy_model_and_data():
-    """Model LightGBM nhỏ, tự train trong test — không phụ thuộc artifact lớn."""
+    """A small LightGBM model trained inside the test, so it does not depend on the big artifacts."""
     rng = np.random.default_rng(0)
     n = 300
     X = pd.DataFrame({
@@ -37,7 +37,7 @@ def test_global_importance_ranks_features_by_mean_abs_shap():
 
 
 def test_compute_shap_values_reconstructs_raw_margin_prediction(toy_model_and_data):
-    """Tính chất cộng dồn của SHAP: base_value + sum(shap) == raw margin prediction."""
+    """SHAP additivity: base_value + sum(shap) == the raw margin prediction."""
     model, X = toy_model_and_data
     shap_values, base_values = compute_shap_values(model, X)
 
@@ -60,9 +60,9 @@ def test_explain_applicant_flags_the_dominant_feature(toy_model_and_data):
 
 
 def test_explain_applicant_is_robust_to_caller_passing_shuffled_column_order(toy_model_and_data):
-    """Booster khớp cột THEO VỊ TRÍ, không theo tên (đã verify tay) — explain_applicant
-    phải tự reindex theo feature_names nên kết quả KHÔNG được đổi dù caller truyền
-    DataFrame với thứ tự cột khác."""
+    """Booster matches columns BY POSITION, not by name (verified by hand). explain_applicant
+    reindexes by feature_names itself, so the result must NOT change when the caller passes a
+    DataFrame with a different column order."""
     model, X = toy_model_and_data
     feature_names = list(X.columns)
     row_correct_order = X.iloc[[0]][feature_names]

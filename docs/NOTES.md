@@ -1,125 +1,130 @@
-# Ghi chú thiết kế — Home Credit Default Risk Scoring
+# Design notes — Home Credit Default Risk Scoring
 
-> Bối cảnh project, các quyết định đã chốt và trạng thái từng phần.
-> Đọc file này trước khi sửa code để khỏi đề xuất ngược lại thứ đã cân nhắc rồi.
-
----
-
-## 1. Định vị project (QUAN TRỌNG — đọc trước)
-
-Đây là **portfolio project cho vị trí Data Scientist** (KHÔNG phải ML/AI Engineer,
-KHÔNG phải LLM/GenAI). Mọi quyết định ưu tiên theo góc nhìn "một DS được chấm thế nào":
-rigor thống kê, modeling, calibration, explainability, insight, và **con số impact đo được**.
-
-Mục tiêu: một dòng mạnh trên CV + học được thứ thật. KHÔNG over-engineer.
-
-Định hướng kỹ thuật: **"production-shaped demo"** — hình dáng như production ở chỗ
-kể được chuyện (tách tầng sạch, chống skew, versioning, audit trail), nhưng phạm vi
-là demo (chạy local/Docker, data Kaggle tĩnh, single-user, không scale).
-
-**KHÔNG làm** (kể cả khi nghe hợp lý): auth/JWT, monitoring/Prometheus, k8s, CI/CD,
-drift detection, retraining tự động, LLM/chatbot. Những thứ này để "Future work" trong README.
+> Project context, settled decisions, and the state of each part.
+> Read this before changing code so you don't re-propose something already considered.
 
 ---
 
-## 2. Bài toán
+## 1. What this project is (IMPORTANT — read first)
 
-- Dataset: **Home Credit Default Risk** (Kaggle), 7 bảng quan hệ, ~307K applicant ở
+This is a **portfolio project targeting a Data Scientist role** (NOT ML/AI Engineer, NOT
+LLM/GenAI). Every decision is weighed from the angle of "how a DS gets evaluated": statistical
+rigor, modeling, calibration, explainability, insight, and **a measurable impact number**.
+
+Goal: one strong line on a CV, plus actually learning something. Do NOT over-engineer.
+
+Technical direction: **"production-shaped demo"**. It has the shape of production wherever
+that tells a story (clean layer separation, skew prevention, versioning, audit trail), but the
+scope is a demo (runs local/Docker, static Kaggle data, single user, no scaling).
+
+**Do NOT build** (even when it sounds reasonable): auth/JWT, monitoring/Prometheus, k8s,
+CI/CD, drift detection, automated retraining, LLM/chatbot. These stay in "Future work".
+
+---
+
+## 2. The problem
+
+- Dataset: **Home Credit Default Risk** (Kaggle), 7 relational tables, ~307K applicants in
   `application_train`.
-- Bài toán: binary classification, dự đoán default. **Imbalanced** (~8% positive).
-- Model chính: **LightGBM** + **SHAP** cho explainability.
-- Domain: lending (regulated) → explainability không phải trang trí mà là yêu cầu
-  pháp lý (adverse action reason codes).
+- Task: binary classification, predict default. **Imbalanced** (~8% positive).
+- Main model: **LightGBM** + **SHAP** for explainability.
+- Domain: lending (regulated), so explainability is a legal requirement rather than
+  decoration (adverse action reason codes).
 
-### 7 bảng (grain + khóa)
-| Bảng | Grain | Link |
+### The 7 tables (grain + keys)
+| Table | Grain | Link |
 |---|---|---|
-| `application_{train,test}` | 1 dòng / applicant, chứa TARGET | SK_ID_CURR (PK) |
-| `bureau` | nhiều dòng / applicant (tín dụng ở TCTD khác) | SK_ID_CURR; đẻ SK_ID_BUREAU |
-| `bureau_balance` | snapshot tháng của mỗi khoản bureau | CHỈ có SK_ID_BUREAU → cần 2-level agg |
-| `previous_application` | đơn vay HC trước đó | SK_ID_CURR; đẻ SK_ID_PREV |
-| `POS_CASH_balance` | lịch sử POS/cash theo tháng | SK_ID_PREV (+ SK_ID_CURR) |
-| `installments_payments` | từng lần trả (grain mịn nhất) | SK_ID_PREV (+ SK_ID_CURR) |
-| `credit_card_balance` | sao kê thẻ theo tháng | SK_ID_PREV (+ SK_ID_CURR) |
+| `application_{train,test}` | 1 row / applicant, holds TARGET | SK_ID_CURR (PK) |
+| `bureau` | many rows / applicant (credit at other institutions) | SK_ID_CURR; emits SK_ID_BUREAU |
+| `bureau_balance` | monthly snapshot of each bureau credit | ONLY has SK_ID_BUREAU, needs 2-level agg |
+| `previous_application` | earlier Home Credit applications | SK_ID_CURR; emits SK_ID_PREV |
+| `POS_CASH_balance` | monthly POS/cash history | SK_ID_PREV (+ SK_ID_CURR) |
+| `installments_payments` | one payment each (finest grain) | SK_ID_PREV (+ SK_ID_CURR) |
+| `credit_card_balance` | monthly card statement | SK_ID_PREV (+ SK_ID_CURR) |
 
-Lưu ý: mọi cột `DAYS_*` là offset ÂM tính từ ngày nộp đơn.
-
----
-
-## 3. Roadmap theo block + trạng thái
-
-- [x] **Block 0** — EDA, framing. Hiểu imbalanced, tại sao không dùng accuracy.
-- [x] **Block 1** — Baseline + metrics. ĐÃ CODE (xem mục 5). AUC baseline (chạy lại local) = 0.76076.
-- [x] **Block 2** — Multi-table feature engineering. 709 features (từ 120). AUC OOF = 0.78757
-  (delta = **+0.02681** so với baseline, cùng fold split để so sánh công bằng).
-- [x] **Block 3** — Monotonic constraints trong `features.yaml` (18 feature có lý do domain rõ:
-  EXT_SOURCE_*, DAYS_BIRTH/EMPLOYED, region rating, overdue/DPD bureau+installments+POS).
-- [x] **Block 4–5** — Recalibration. Isotonic thắng Platt/sigmoid (đánh giá bằng nested 5-fold
-  trên OOF, không lạc quan): ECE 0.00417 → **0.00060**, Brier 0.06598 → 0.06589.
-- [x] **Block 6** — SHAP sâu → reason codes. Top global: EXT_SOURCE_2/3/1. 7/18 monotonic
-  feature lọt top-30 SHAP (validate domain reasoning ở Block 3 khớp model học được).
-- [x] **Block 7** — FastAPI backend + MySQL (docker-compose), verify chạy thật end-to-end
-  (không chỉ unit test) — load 7 bảng thật, chấm applicant thật, ghi audit trail MySQL.
-- [x] **Block 8** — React frontend, 3 trang (Score/Insights/History), verify qua browser
-  thật (cả dark + light theme, cả mobile). Hướng thiết kế: "Risk Console" — Swiss grid +
-  dark-luxury base + Fraunces/JetBrains Mono pairing + bento composition.
-- [x] **Block 9** — Cutoff policy + fairness. Dịch điểm số sang quyết định: ở ngưỡng duyệt
-  70%, bad rate nhóm được duyệt 8.07% → 3.51% (**giảm 56.5%** tổn thất, chặn 69.5% ca vỡ nợ).
-  Phân khúc theo thuộc tính được bảo vệ (ECOA): adverse impact ratio giới tính 0.816 (đạt
-  4/5ths), nhóm tuổi **0.446 (KHÔNG đạt)** — model calibrate đều giữa các nhóm nhưng tác động
-  chính sách thì không. Surface lên model card + trang Insights.
-- [x] **Block 10** — README + reproducibility. README đầy đủ (kết quả, kiến trúc, cách chạy,
-  bug thật đã bắt, hạn chế đã biết). `ml/requirements.txt` + `backend/requirements.txt` pin
-  version — `numpy<2.5` BẮT BUỘC (numba của shap chưa hỗ trợ numpy 2.5).
-- [ ] **Future work** — auth, monitoring, CI/CD, drift detection, retraining tự động
-  (cố tình KHÔNG làm — xem mục 1).
+Note: every `DAYS_*` column is a NEGATIVE offset from the application date.
 
 ---
 
-## 4. Quyết định thiết kế đã chốt (đừng đề xuất ngược lại)
+## 3. Roadmap by block + status
 
-1. **Baseline sạch có chủ đích**: KHÔNG dùng `scale_pos_weight` / `is_unbalance`,
-   KHÔNG impute ở Block 1 — để giữ calibration sạch làm mốc đo. Reweighting/tuning
-   để dành block sau. Đừng "sửa" baseline bằng cách thêm mấy cái này.
-   (Cập nhật: hyperparameter tuning CHƯA làm và hiện không nằm trong scope — đã ghi vào
-   "Hạn chế đã biết" ở README + model card thay vì để treo như một lời hứa.)
-2. **CV scheme mặc định**: StratifiedKFold OOF. Tin CV hơn public LB.
-3. **Metrics tự viết tay** trong `metrics.py`, KHÔNG gọi `sklearn.metrics` cho các
-   metric lõi (đây là điểm nhấn CV — chứng minh hiểu metric). Có thể dùng sklearn để
-   ASSERT test đúng, nhưng bản chạy chính là tự viết.
-3. **Feature engineering phải là pipeline TÁI SỬ DỤNG** (không phải code rời trong
-   notebook) — vì backend serve 1 applicant phải chạy ĐÚNG đường tính feature đó.
-   → xuất ra `feature_pipeline.pkl` + `feature_names.json` (chống training-serving skew).
-4. **Tách tầng cứng**: `ml/` độc lập, không biết gì về web. `backend/` chỉ LOAD
-   artifact, KHÔNG train, KHÔNG `import` từ `ml/src/train.py`. Biên giới duy nhất giữa
-   2 tầng là thư mục `ml/artifacts/`.
-   → **Làm rõ khi code Block 7** (đã áp dụng trong `backend/app/scorer.py`): "KHÔNG train"
-   nghĩa là backend không bao giờ import `ml.src.train`, `ml.src.train_engineered`,
-   `ml.src.calibrate` (orchestration training thật). Backend ĐƯỢC PHÉP import
-   `ml.src.features.build.FeaturePipeline`, `ml.src.explain` (SHAP inference), và
-   `ml.src.reason_codes` — 3 module này là "feature/explain CONTRACT" thuần transform/hàm
-   thuần, không train, cần thiết để unpickle `feature_pipeline.pkl` (pickle yêu cầu class
-   definition import được ở nơi unpickle).
-5. **DB = MySQL**, lưu audit trail (mỗi lần chấm → 1 dòng). Có `model_version` để
-   governance. `pd_score` dùng DECIMAL không FLOAT.
-6. Input serving: **chọn applicant có sẵn theo SK_ID_CURR** (backend tự kéo 7 bảng),
-   KHÔNG bắt user điền tay 200 field. Upload file = optional sau.
+- [x] **Block 0** — EDA, framing. Understand the imbalance, why accuracy is useless here.
+- [x] **Block 1** — Baseline + metrics. CODED (see section 6). Baseline AUC (rerun locally) = 0.76076.
+- [x] **Block 2** — Multi-table feature engineering. 709 features (from 120). OOF AUC = 0.78757
+  (delta = **+0.02681** vs baseline, same fold split for a fair comparison).
+- [x] **Block 3** — Monotonic constraints in `features.yaml` (18 features with clear domain
+  rationale: EXT_SOURCE_*, DAYS_BIRTH/EMPLOYED, region rating, overdue/DPD from
+  bureau + installments + POS).
+- [x] **Block 4–5** — Recalibration. Isotonic beats Platt/sigmoid (evaluated with nested
+  5-fold on OOF, so not optimistic): ECE 0.00417 → **0.00060**, Brier 0.06598 → 0.06589.
+- [x] **Block 6** — Deep SHAP → reason codes. Top global: EXT_SOURCE_2/3/1. 7/18 monotonic
+  features land in the top-30 by SHAP (confirms the Block 3 domain reasoning matches what the
+  model actually learned).
+- [x] **Block 7** — FastAPI backend + MySQL (docker-compose), verified running end to end
+  (not just unit tests): loads the real 7 tables, scores a real applicant, writes the audit
+  trail to MySQL.
+- [x] **Block 8** — React frontend, 3 pages (Score/Insights/History), verified in a real
+  browser (dark + light theme, and mobile). Design direction: "Risk Console" — Swiss grid,
+  dark-luxury base, Fraunces/JetBrains Mono pairing, bento composition.
+- [x] **Block 9** — Cutoff policy + fairness. Turning the score into a decision: at a 70%
+  approval rate, the bad rate among approved goes 8.07% → 3.51% (**56.5% less** loss, 69.5%
+  of defaults blocked). Segments by protected attribute (ECOA): adverse impact ratio 0.816 for
+  gender (passes 4/5ths), **0.446 for age (FAILS)**. The model calibrates evenly across groups
+  but the policy impact does not. Surfaced in the model card and the Insights page.
+- [x] **Block 10** — README + reproducibility. Full README (results, architecture, how to run,
+  real bugs caught, known limitations). `ml/requirements.txt` + `backend/requirements.txt`
+  pin versions — `numpy<2.5` is MANDATORY (shap's numba does not support numpy 2.5).
+- [ ] **Future work** — auth, monitoring, CI/CD, drift detection, automated retraining
+  (deliberately NOT built, see section 1).
 
 ---
 
-## 5. Cấu trúc thư mục mục tiêu
+## 4. Settled design decisions (don't propose the opposite)
+
+1. **The baseline is deliberately clean**: NO `scale_pos_weight` / `is_unbalance`, NO
+   imputation in Block 1, so calibration stays clean as a reference point. Reweighting and
+   tuning are for later blocks. Don't "fix" the baseline by adding these.
+   (Update: hyperparameter tuning has NOT been done and is currently out of scope. It is
+   written up under "known limitations" in the README and model card rather than left hanging
+   as a promise.)
+2. **Default CV scheme**: StratifiedKFold OOF. Trust CV over the public leaderboard.
+3. **Hand-written metrics** in `metrics.py`. Do NOT call `sklearn.metrics` for the core
+   metrics — this is a CV talking point, it proves the metrics are understood. Sklearn may be
+   used in tests to ASSERT correctness, but the production path is hand-written.
+4. **Feature engineering must be a REUSABLE pipeline** (not loose notebook code), because the
+   backend serving one applicant has to run the EXACT same feature path.
+   → exports `feature_pipeline.pkl` + `feature_names.json` (prevents training-serving skew).
+5. **Hard layer separation**: `ml/` is standalone and knows nothing about the web. `backend/`
+   only LOADS artifacts, never trains, never imports from `ml/src/train.py`. The only boundary
+   between the two layers is the `ml/artifacts/` directory.
+   → **Clarified while coding Block 7** (applied in `backend/app/scorer.py`): "never trains"
+   means the backend never imports `ml.src.train`, `ml.src.train_engineered`, or
+   `ml.src.calibrate` (the real training orchestration). The backend IS ALLOWED to import
+   `ml.src.features.build.FeaturePipeline`, `ml.src.explain` (SHAP inference), and
+   `ml.src.reason_codes`. Those three are the "feature/explain CONTRACT": pure transforms and
+   pure functions, no training, and required to unpickle `feature_pipeline.pkl` (pickle needs
+   the class definition importable wherever you unpickle).
+6. **DB = MySQL**, holding the audit trail (one row per scoring call). Has `model_version` for
+   governance. `pd_score` uses DECIMAL, not FLOAT.
+7. Serving input: **pick an existing applicant by SK_ID_CURR** (the backend pulls the 7 tables
+   itself) rather than making the user fill in 200 fields by hand. File upload is optional
+   later.
+
+---
+
+## 5. Target directory layout
 
 ```
 home-credit-scoring/
-├── ml/                          # TẦNG 1 — pipeline ML độc lập
-│   ├── data/{raw,processed}/    # gitignore
+├── ml/                          # LAYER 1 — standalone ML pipeline
+│   ├── data/{raw,processed}/    # gitignored
 │   ├── config/
-│   │   ├── features.yaml        # khai báo feature + monotonic constraints
+│   │   ├── features.yaml        # feature declarations + monotonic constraints
 │   │   └── params.yaml          # hyperparams, seed, n_folds
 │   ├── src/
-│   │   ├── metrics.py           # [DONE] metric tự viết
+│   │   ├── metrics.py           # [DONE] hand-written metrics
 │   │   ├── features/
-│   │   │   ├── aggregations.py         # [DONE] hàm agg tái dùng + infer_categories (chống skew)
+│   │   │   ├── aggregations.py         # [DONE] reusable aggs + infer_categories (anti-skew)
 │   │   │   ├── bureau.py               # [DONE] 2-level agg (bureau_balance→bureau→curr)
 │   │   │   ├── previous_application.py # [DONE]
 │   │   │   ├── pos_cash.py             # [DONE]
@@ -127,208 +132,229 @@ home-credit-scoring/
 │   │   │   ├── credit_card.py          # [DONE]
 │   │   │   └── build.py                # [DONE] orchestrator + FeaturePipeline (fit/transform)
 │   │   ├── train.py             # [DONE] OOF StratifiedKFold baseline
-│   │   ├── train_engineered.py  # [DONE] Block 2+3: OOF trên engineered features + monotonic
+│   │   ├── train_engineered.py  # [DONE] Block 2+3: OOF on engineered features + monotonic
 │   │   ├── calibrate.py         # [DONE] Block 4-5: isotonic/Platt + final model.txt/calibrator.pkl
 │   │   ├── explain.py           # [DONE] Block 6: SHAP global + local (explain_applicant)
-│   │   ├── reason_codes.py      # [DONE] feature -> câu tiếng Việt (curated + fallback)
+│   │   ├── reason_codes.py      # [DONE] feature -> Vietnamese sentence (curated + fallback)
 │   │   ├── policy.py            # [DONE] Block 9: cutoff policy + segment/fairness report
 │   │   ├── export_metrics_summary.py  # [DONE] metrics + policy + fairness -> metrics_summary.json
-│   │   ├── export_model_card.py # [DONE] model_card.md từ artifact (KHÔNG train lại)
-│   │   └── run_build_features.py      # [DONE] entry point AN TOÀN cho build.py (xem ghi chú
-│   │                                     trong features/build.py — KHÔNG chạy build.py bằng -m)
-│   ├── artifacts/               # OUTPUT training = biên giới sang backend — TẤT CẢ [DONE]
+│   │   ├── export_model_card.py # [DONE] model_card.md from artifacts (NO retraining)
+│   │   └── run_build_features.py      # [DONE] SAFE entry point for build.py (see the note
+│   │                                     in features/build.py — do NOT run build.py with -m)
+│   ├── artifacts/               # TRAINING OUTPUT = the boundary with backend — ALL [DONE]
 │   │   ├── model.txt
 │   │   ├── calibrator.pkl
 │   │   ├── feature_pipeline.pkl
 │   │   ├── feature_names.json
 │   │   ├── shap_global_importance.csv
-│   │   ├── metrics_summary.json
-│   │   └── model_card.md
+│   │   ├── metrics_summary.json  # + policy/fairness block (Block 9)
+│   │   └── model_card.md         # generated by export_model_card.py
 │   ├── notebooks/
-│   ├── requirements.txt         # [DONE] pin version — numpy<2.5 BẮT BUỘC (numba/shap)
-│   └── tests/                   # 55 test (Block 2-9)  [51 chạy được không cần shap]
-├── backend/                     # TẦNG 2 — FastAPI, chỉ load artifact — [DONE]
+│   ├── requirements.txt         # [DONE] pinned — numpy<2.5 MANDATORY (numba/shap)
+│   └── tests/                   # 55 tests (Block 2-9)  [51 run without shap installed]
+├── backend/                     # LAYER 2 — FastAPI, only loads artifacts — [DONE]
 │   ├── app/
-│   │   ├── main.py              # lifespan: load RawTableStore + Scorer 1 lần lúc startup
-│   │   ├── config.py            # đọc .env: DATABASE_URL, MODEL_VERSION, CORS_ORIGINS
-│   │   ├── schemas.py           # Pydantic (ScoreResponse có base_value/raw_margin cho waterfall)
+│   │   ├── main.py              # lifespan: load RawTableStore + Scorer once at startup
+│   │   ├── config.py            # reads .env: DATABASE_URL, MODEL_VERSION, CORS_ORIGINS
+│   │   ├── schemas.py           # Pydantic (ScoreResponse carries base_value/raw_margin)
 │   │   ├── scorer.py            # Scorer: pipeline.transform → predict → calibrate → SHAP
-│   │   ├── reason_codes.py      # re-export ml.src.reason_codes (xem ghi chú biên giới tầng)
-│   │   ├── dependencies.py      # get_store/get_scorer (FastAPI Depends, dễ override lúc test)
-│   │   ├── data/{source.py,assembler.py}   # kéo 7 bảng theo sk_id_curr (applicant_train pool)
+│   │   ├── reason_codes.py      # re-exports ml.src.reason_codes (see layer boundary note)
+│   │   ├── dependencies.py      # get_store/get_scorer (FastAPI Depends, easy to override)
+│   │   ├── data/{source.py,assembler.py}   # pull 7 tables by sk_id_curr (application_train pool)
 │   │   ├── db/{session.py,models.py,crud.py}  # SQLAlchemy + PyMySQL, ScoringHistory
 │   │   └── routers/{score.py,history.py,insights.py}
 │   ├── migrations/              # Alembic — 0001_create_scoring_history
-│   └── tests/                   # 17 test (dùng data thật lọc theo 2 SK_ID_CURR, không mock)
-├── frontend/                    # TẦNG 3 — React (Vite, JS/JSX) — [DONE]
+│   └── tests/                   # 17 tests (real data filtered to 2 SK_ID_CURR, no mocks)
+├── frontend/                    # LAYER 3 — React (Vite, JS/JSX) — [DONE]
 │   └── src/
 │       ├── pages/{ScorePage,InsightsPage,HistoryPage}.jsx
 │       ├── components/
-│       │   ├── cutoff-table/CutoffTable.jsx               # Block 9: bảng trade-off duyệt/rủi ro
-│       │   ├── segment-table/SegmentTable.jsx             # Block 9: phân khúc + badge AIR
+│       │   ├── cutoff-table/CutoffTable.jsx               # Block 9: approval/risk trade-off
+│       │   ├── segment-table/SegmentTable.jsx             # Block 9: segments + AIR badge
 │       │   ├── applicant-selector/ApplicantSelector.jsx   # search-as-you-type
-│       │   ├── score-gauge/ScoreGauge.jsx                 # radial gauge, animated, scale 5x base_rate
+│       │   ├── score-gauge/ScoreGauge.jsx                 # radial gauge, animated, 5x base rate
 │       │   ├── reason-code-list/ReasonCodeList.jsx
-│       │   ├── shap-waterfall/ShapWaterfall.jsx            # SVG tay, base→feature→"còn lại"→kết quả
+│       │   ├── shap-waterfall/ShapWaterfall.jsx           # hand SVG, base→feature→"rest"→result
 │       │   ├── history-table/HistoryTable.jsx
-│       │   ├── nav/NavBar.jsx                              # theme toggle dark/light
+│       │   ├── nav/NavBar.jsx                             # dark/light theme toggle
 │       │   └── ui/{RiskBadge,StatTile}.jsx
-│       ├── context/ScoreContext.jsx   # share applicant/scoreResult giữa Score ↔ Insights
-│       ├── styles/{tokens.css,typography.css,global.css}   # design system: xem mục 8
+│       ├── context/ScoreContext.jsx   # shares applicant/scoreResult between Score ↔ Insights
+│       ├── styles/{tokens.css,typography.css,global.css}   # design system: see section 8
 │       └── api/client.js
-├── docker-compose.yml           # mysql (backend/frontend chạy dev server trực tiếp, xem mục 8)
+├── docker-compose.yml           # mysql only (backend/frontend run dev servers, see section 6)
 └── README.md
 ```
 
+Note: the UI and the reason codes are intentionally kept in Vietnamese. Docs and code comments
+are in English.
+
 ---
 
-## 6. Trạng thái code hiện tại
+## 6. Current state of the code
 
-### `ml/src/metrics.py` — ĐÃ CODE
-Tự viết tay, 3 cụm:
-- Ranking: AUC (Mann–Whitney rank, O(n log n), tie = rank trung bình), Gini (=2·AUC−1), KS (=max|TPR−FPR|).
-- Calibration/prob: PR-AUC (step-sum / average precision), Brier (+ Murphy decomposition), ECE.
-- Operational credit: partial AUC (chuẩn hóa McClish), TPR@FPR, decile table.
+### `ml/src/metrics.py` — CODED
+Hand-written, three groups:
+- Ranking: AUC (Mann–Whitney rank, O(n log n), ties get the average rank), Gini (=2·AUC−1),
+  KS (=max|TPR−FPR|).
+- Calibration/probability: PR-AUC (step-sum / average precision), Brier (+ Murphy
+  decomposition), ECE (uniform and quantile binning).
+- Operational credit: partial AUC (McClish standardized), TPR@FPR, decile table.
 
-### `ml/src/train.py` — ĐÃ CODE
-Baseline LightGBM, StratifiedKFold OOF, dùng categorical native của LGBM, KHÔNG
-reweight, KHÔNG impute. In cả 2 họ metric. AUC OOF (chạy lại local, seed=42) = **0.76076**.
-(Ghi chú "~0.74" trong bản trước là số cũ/khác môi trường — số 0.76076 này mới là mốc
-so sánh chính thức vì cùng máy, cùng seed, cùng fold split với Block 2.)
+### `ml/src/train.py` — CODED
+LightGBM baseline, StratifiedKFold OOF, LightGBM's native categoricals, NO reweighting, NO
+imputation. Prints both metric families. OOF AUC (rerun locally, seed=42) = **0.76076**.
+(The "~0.74" in an earlier draft was a stale number from a different environment. 0.76076 is
+the official reference because it comes from the same machine, seed, and fold split as Block 2.)
 
-### `ml/src/features/` — ĐÃ CODE (Block 2)
+### `ml/src/features/` — CODED (Block 2)
 - `aggregations.py`: `aggregate_numeric`, `aggregate_categorical`, `group_size`, `merge_all`,
-  `infer_categories`. Categorical agg nhận `categories` cố định lúc fit — bắt buộc để chống
-  training-serving skew (1 applicant lẻ lúc serve có thể thiếu category so với lúc train).
-- `bureau.py`: 2-level agg đúng như thiết kế — `bureau_balance` groupby SK_ID_BUREAU (level 1,
-  domain STATUS hardcode vì đây là enum đóng theo data dictionary) → merge vào `bureau` →
-  groupby SK_ID_CURR (level 2).
-- `previous_application.py`, `pos_cash.py`, `credit_card.py`: agg trực tiếp về SK_ID_CURR
-  (3 bảng này đã có sẵn cột SK_ID_CURR, không cần 2-level). Sentinel `365243` trong các cột
-  DAYS_* của `previous_application` được dọn về NaN trước khi agg.
-- `installments.py`: thêm 2 cột derived ở mức dòng TRƯỚC khi agg — `DAYS_LATE`,
-  `PAYMENT_DIFF` — đây là tín hiệu hành vi trả nợ quan trọng nhất, không tái tạo được
-  nếu chỉ agg riêng từng cột gốc.
-- `build.py`: `FeaturePipeline` (`fit`/`transform`), pickle được — đây là artifact
-  `feature_pipeline.pkl` mà backend sẽ load. `transform()` cũng dọn sentinel `DAYS_EMPLOYED
-  == 365243` (~18% dòng, chủ yếu hưu trí) trong `application` về NaN.
-- Kết quả: 709 features (từ 120 baseline). **AUC OOF = 0.78757** (delta **+0.02681**,
-  cùng fold split với baseline).
-- Test: `ml/tests/test_aggregations.py`, `test_bureau.py`, `test_build.py` (15 test) — có
-  test chuyên bắt training-serving skew, đã bắt được 1 bug thật lúc code (domain STATUS của
-  `bureau_balance` suy ra động thay vì cố định).
+  `infer_categories`. The categorical agg takes a fixed `categories` mapping from fit time,
+  which is required to prevent training-serving skew (a single applicant at serving time may
+  be missing categories seen during training).
+- `bureau.py`: 2-level agg exactly as designed — `bureau_balance` groupby SK_ID_BUREAU
+  (level 1, the STATUS domain is hardcoded because it's a closed enum per the data dictionary)
+  → merge into `bureau` → groupby SK_ID_CURR (level 2).
+- `previous_application.py`, `pos_cash.py`, `credit_card.py`: aggregate straight to
+  SK_ID_CURR (these three already carry SK_ID_CURR, no 2-level needed). The `365243` sentinel
+  in `previous_application`'s DAYS_* columns is cleaned to NaN before aggregating.
+- `installments.py`: adds 2 derived columns at row level BEFORE aggregating — `DAYS_LATE` and
+  `PAYMENT_DIFF`. These are the strongest repayment-behaviour signals and cannot be
+  reconstructed by aggregating the source columns separately.
+- `build.py`: `FeaturePipeline` (`fit`/`transform`), picklable. This is the
+  `feature_pipeline.pkl` artifact the backend loads. `transform()` also cleans the
+  `DAYS_EMPLOYED == 365243` sentinel (~18% of rows, mostly retirees) in `application` to NaN.
+- Result: 709 features (from 120 baseline). **OOF AUC = 0.78757** (delta **+0.02681**, same
+  fold split as the baseline).
+- Tests: `ml/tests/test_aggregations.py`, `test_bureau.py`, `test_build.py` — including tests
+  specifically for training-serving skew, which caught a real bug during development (the
+  `bureau_balance` STATUS domain was being inferred dynamically instead of fixed).
 
-### `ml/src/train_engineered.py` — ĐÃ CODE (Block 2 retrain + Block 3)
-Load feature engineered (cache `ml/artifacts/train_features.parquet`), map
-`features.yaml.monotone_constraints` → mảng đúng thứ tự cột X cho LightGBM
-(`build_monotone_constraints`, tự động ép về 0 nếu lỡ khai báo nhầm cho cột categorical).
-So sánh trực tiếp AUC với `oof_baseline.npy` (cùng seed/n_folds → cùng fold split).
+### `ml/src/train_engineered.py` — CODED (Block 2 retrain + Block 3)
+Loads the engineered features (cached at `ml/artifacts/train_features.parquet`), maps
+`features.yaml.monotone_constraints` into an array matching X's column order for LightGBM
+(`build_monotone_constraints`, which forces 0 if a constraint was accidentally declared for a
+categorical column). Compares AUC directly against `oof_baseline.npy` (same seed/n_folds means
+the same fold split).
 
-### `ml/config/features.yaml` — ĐÃ CODE (Block 3)
-18 feature có monotonic constraint với lý do domain viết kèm (EXT_SOURCE_*, DAYS_BIRTH,
-DAYS_EMPLOYED, AMT_INCOME_TOTAL, REGION_RATING_CLIENT[_W_CITY], bureau overdue,
-installments late/underpay, POS DPD). Cố tình KHÔNG ràng buộc AMT_CREDIT/AMT_ANNUITY vì
-quan hệ với rủi ro thực tế mơ hồ/phi tuyến.
+### `ml/config/features.yaml` — CODED (Block 3)
+18 features with monotonic constraints, each with its domain rationale written alongside
+(EXT_SOURCE_*, DAYS_BIRTH, DAYS_EMPLOYED, AMT_INCOME_TOTAL, REGION_RATING_CLIENT[_W_CITY],
+bureau overdue, installments late/underpay, POS DPD). AMT_CREDIT/AMT_ANNUITY are deliberately
+left unconstrained because their real relationship with risk is ambiguous and non-monotonic.
 
-### `ml/src/calibrate.py` — ĐÃ CODE (Block 4-5)
-`nested_calibrate`: đánh giá isotonic/Platt bằng K-fold trên chính OOF (fit calibrator trên
-K-1 phần, dự đoán phần còn lại) để không lạc quan ảo. Isotonic thắng: ECE 0.00417 → 0.00060,
-Brier 0.06598 → 0.06589 (Platt/sigmoid làm ECE XẤU hơn — model gốc đã khá calibrated sẵn
-vì không dùng scale_pos_weight, nên phép biến đổi sigmoid cứng không hợp).
-Cũng train model cuối trên 100% data (`num_boost_round` chọn qua 1 split early-stopping
-riêng) → lưu `model.txt`, `calibrator.pkl`, `model_card.md`.
-Test: `ml/tests/test_calibrate.py` (6 test, gồm cả test chống leakage của nested calibration).
+### `ml/src/calibrate.py` — CODED (Block 4-5)
+`nested_calibrate`: evaluates isotonic/Platt with K-fold over the OOF predictions themselves
+(fit the calibrator on K-1 parts, predict the rest) so the estimate isn't falsely optimistic.
+Isotonic wins: ECE 0.00417 → 0.00060, Brier 0.06598 → 0.06589. Platt/sigmoid makes ECE WORSE,
+because the raw model is already fairly well calibrated (no `scale_pos_weight`), so forcing a
+rigid sigmoid on top doesn't fit.
+Also trains the final model on 100% of the data (`num_boost_round` chosen via a separate
+early-stopping split) → saves `model.txt` and `calibrator.pkl`.
+Tests: `ml/tests/test_calibrate.py`, including a leakage test for the nested calibration.
 
-### `ml/src/explain.py` + `reason_codes.py` — ĐÃ CODE (Block 6)
-- `explain_applicant(model, feature_names, row, top_k)`: tự reindex `row` theo `feature_names`
-  TRƯỚC khi predict/explain — **bug thật đã bắt**: `Booster.predict()` khớp cột DataFrame
-  THEO VỊ TRÍ chứ không theo tên (đảo thứ tự cột → predict ra kết quả khác, KHÔNG báo lỗi).
-  `model.feature_name()` cũng không đáng tin (LightGBM tự sanitize tên cột có ký tự đặc biệt
-  khi lưu `model.txt`). → mọi nơi dùng model (explain.py, backend/scorer.py) đều phải
-  reindex theo đúng `feature_names.json`.
-- `reason_codes.py`: curated tay ~25 feature tín hiệu mạnh (khớp 18 monotonic + top SHAP),
-  fallback dễ đọc (đánh dấu `curated=False`) cho phần còn lại. `build_reason_codes` xử lý
-  value là string (cột categorical gốc như CODE_GENDER/ORGANIZATION_TYPE hoàn toàn có thể
-  lọt top-K SHAP của 1 applicant cụ thể) và NaN an toàn — **bug thật đã bắt**: ép `float()`
-  vô điều kiện lên value sẽ crash khi top feature là categorical.
-- Global: 7/18 monotonic feature lọt top-30 SHAP importance (EXT_SOURCE_1/2/3, DAYS_BIRTH,
-  DAYS_EMPLOYED, INSTAL_DAYS_LATE_MAX, INSTAL_PAYMENT_DIFF_MEAN).
-- Test: `test_explain.py`, `test_reason_codes.py` (11 test).
+### `ml/src/explain.py` + `reason_codes.py` — CODED (Block 6)
+- `explain_applicant(model, feature_names, row, top_k)` reindexes `row` by `feature_names`
+  BEFORE predicting/explaining. **Real bug caught here**: `Booster.predict()` matches
+  DataFrame columns BY POSITION, not by name (reorder the columns and you get a different
+  prediction with NO error). `model.feature_name()` isn't trustworthy either, since LightGBM
+  sanitizes column names containing special characters when saving `model.txt`. So every
+  place that uses the model (explain.py, backend/scorer.py) must reindex by
+  `feature_names.json`.
+- `reason_codes.py`: ~25 strong-signal features curated by hand (matching the 18 monotonic
+  ones plus top SHAP), with a readable fallback (marked `curated=False`) for the rest.
+  `build_reason_codes` handles string values safely (raw categorical columns like
+  CODE_GENDER/ORGANIZATION_TYPE can absolutely land in a given applicant's top-K SHAP) as well
+  as NaN. **Real bug caught here**: calling `float()` unconditionally on the value crashes
+  when the top feature is categorical.
+- Global: 7/18 monotonic features land in the top-30 SHAP importance (EXT_SOURCE_1/2/3,
+  DAYS_BIRTH, DAYS_EMPLOYED, INSTAL_DAYS_LATE_MAX, INSTAL_PAYMENT_DIFF_MEAN).
+- Tests: `test_explain.py`, `test_reason_codes.py`.
 
-### `backend/` — ĐÃ CODE (Block 7)
-- `scorer.py`: `Scorer.score()` trả cả `base_value`/`raw_margin` (không chỉ top-K reasons)
-  để frontend vẽ waterfall cộng dồn khớp — "các yếu tố còn lại" = raw_margin − base_value −
-  sum(top-K shap).
-- `data/source.py`: load 7 bảng thật MỘT LẦN lúc startup (giữ RAM suốt vòng đời process,
-  KHÔNG nạp vào MySQL — MySQL chỉ audit trail). Applicant pool = `application_train` (có
-  TARGET thật để đối chiếu ở Insights).
-- **Bug thật đã bắt (nghiêm trọng) lúc test**: `feature_pipeline.pkl` ban đầu pickle lúc
-  `ml.src.features.build` chạy như `__main__` (qua `python -m ml.src.features.build`) →
-  `FeaturePipeline.__module__` bị ghi thành `"__main__"` → KHÔNG unpickle được từ bất kỳ
-  entry point nào khác (backend, pytest...). Fix: `build.py` KHÔNG còn `if __name__ ==
-  "__main__"`; dùng `ml/src/run_build_features.py` (chỉ import `main()`, không định nghĩa
-  class) để build lại artifact khi cần.
-- Test (17, `backend/tests/`): dùng data THẬT lọc theo 2 SK_ID_CURR thật (100002 có lịch sử
-  đầy đủ TARGET=1, 100006 không có bureau history TARGET=0) — **không mock**, vì tự dựng
-  DataFrame tay 2 lần đều thiếu cột (categorical rồi numeric) so với schema pipeline thật
-  fit — chuyển hẳn sang filter CSV thật cho chắc. `test_api.py` dùng SQLite in-memory qua
-  `StaticPool` (mặc định mỗi connection mới vào `sqlite:///:memory:` là 1 DB rỗng riêng).
-- Verify chạy thật (không chỉ unit test): `uvicorn backend.app.main:app`, load 2.5GB data
-  ~10-50s, chấm applicant 100002 → PD 43.48%, risk "Cao", ghi MySQL đúng DECIMAL.
+### `backend/` — CODED (Block 7)
+- `scorer.py`: `Scorer.score()` returns `base_value`/`raw_margin` alongside the top-K reasons,
+  so the frontend waterfall adds up correctly — "everything else" = raw_margin − base_value −
+  sum(top-K shap). The SHAP `TreeExplainer` is built once at startup, since walking ~1400
+  trees is the expensive part and it used to be rebuilt on every request.
+- `data/source.py`: loads the real 7 tables ONCE at startup and holds them in RAM for the
+  process lifetime. They are NOT loaded into MySQL; MySQL is only the audit trail. The
+  applicant pool is `application_train` (it has the real TARGET, useful for comparison on the
+  Insights page).
+- **Serious real bug caught during testing**: `feature_pipeline.pkl` was originally pickled
+  while `ml.src.features.build` ran as `__main__` (via `python -m ml.src.features.build`), so
+  `FeaturePipeline.__module__` was recorded as `"__main__"` and the artifact could NOT be
+  unpickled from any other entry point (backend, pytest, ...). Fix: `build.py` no longer has
+  an `if __name__ == "__main__"` block, and `ml/src/run_build_features.py` (which only imports
+  `main()` and defines no classes) is the entry point for rebuilding the artifact. There is a
+  regression test for this.
+- Tests (`backend/tests/`): use REAL data filtered to 2 real SK_ID_CURR values (100002 has
+  full history and TARGET=1; 100006 has no bureau history and TARGET=0). **No mocks** — two
+  attempts at hand-building DataFrames both ended up missing columns (categorical first, then
+  numeric) compared to the schema the real pipeline was fit on, so filtering the real CSVs was
+  the safer route. `test_api.py` uses in-memory SQLite via `StaticPool` (by default every new
+  connection to `sqlite:///:memory:` is a separate empty database).
+- Verified actually running (not just unit tests): `uvicorn backend.app.main:app`, loading
+  2.5GB of data in ~10-50s, scoring applicant 100002 → PD 43.48%, risk tier "Cao", written to
+  MySQL with the right DECIMAL type.
 
-### `ml/src/policy.py` + `export_model_card.py` — ĐÃ CODE (Block 9)
-- `policy.py`: `approve_mask` (cắt theo phân vị, không theo ngưỡng PD tuyệt đối — giữ tỉ lệ
-  duyệt cố định là cách so sánh công bằng giữa các model, và gần cách risk vận hành thật),
-  `cutoff_table`, `segment_report`, `adverse_impact_ratio` (4/5ths rule, bỏ qua nhóm <1000
-  dòng để không bị nhiễu kéo), `age_bands`.
-- `metrics.py` mở rộng: `expected_calibration_error(..., strategy="quantile")`. Lý do: 77%
-  prediction < 0.1 nên uniform-10 nhét gần hết vào 1 bin; sai lệch NGƯỢC CHIỀU trong cùng bin
-  triệt tiêu nhau. Có test dựng đúng tình huống đó (uniform ra 0, quantile ra 0.02).
-- `export_model_card.py`: model card tách khỏi `calibrate.py`. Trước đây template nằm inline
-  trong hàm training → sửa một câu chữ cũng phải train lại. Giờ card là hàm thuần của artifact.
-- **Bug thật đã bắt**: `json.dump` ghi `NaN` (không phải JSON hợp lệ) khi AUC phân khúc không
-  xác định — Python đọc lại được nên im lặng, nhưng `JSON.parse` của trình duyệt ném lỗi →
-  trang Insights trắng. Fix: `json_safe()` NaN→None + `allow_nan=False`.
-- Test: `test_policy.py` (11), `test_metrics_ece.py` (4).
+### `ml/src/policy.py` + `export_model_card.py` — CODED (Block 9)
+- `policy.py`: `approve_mask` (cuts by quantile rather than an absolute PD threshold — holding
+  the approval rate fixed is the fair way to compare models, and it's close to how a risk team
+  actually operates), `cutoff_table`, `segment_report`, `adverse_impact_ratio` (4/5ths rule,
+  skipping groups under 1000 rows so noise doesn't drag the ratio), `age_bands`.
+- `metrics.py` extended with `expected_calibration_error(..., strategy="quantile")`. Reason:
+  77% of predictions are below 0.1, so uniform-10 dumps nearly everything into one bin and
+  errors in OPPOSITE directions inside that bin cancel out. There's a test constructing
+  exactly that situation (uniform reports 0, quantile reports 0.02).
+- `export_model_card.py`: the model card is split out of `calibrate.py`. The template used to
+  live inline inside the training function, so changing one sentence meant retraining. Now the
+  card is a pure function of the artifacts.
+- **Real bug caught**: `json.dump` writes `NaN`, which is not valid JSON, when a segment's AUC
+  is undefined. Python reads it back fine so it failed silently in the ML layer, but the
+  browser's `JSON.parse` throws and the Insights page goes blank. Fix: `json_safe()` maps
+  NaN→None, plus `allow_nan=False`.
+- Tests: `test_policy.py`, `test_metrics_ece.py`.
 
-### `frontend/` — ĐÃ CODE (Block 8)
-- Hướng thiết kế **"Risk Console"**: Swiss/International grid + dark-luxury base (đã cân nhắc
-  light-first nhưng dark hợp hơn cho "quant/risk desk" aesthetic) + Fraunces (display số/tiêu
-  đề) + JetBrains Mono (data/nhãn) + bento composition ở Insights. Palette OKLCH, risk semantic
-  3 màu (teal-green/amber/coral-red) tách biệt với accent gold (dùng cho action, không phải status).
-  Cả 2 theme dark/light đều đầy đủ, không phải light là afterthought.
-  ScoreGauge: scale hiển thị 0–40% (5x default rate 8.07%) thay vì 0–100% tuyến tính — vì hầu hết
-  applicant PD thấp, scale tuyến tính làm gauge gần như rỗng, mất khả năng phân biệt. Vẫn có
-  tick mốc TB quần thể để không gây hiểu lầm.
-  ShapWaterfall: SVG tay (không dùng chart lib) — base_value → từng feature → "các yếu tố còn
-  lại" (gộp) → kết quả, cộng dồn khớp chính xác với raw_margin.
-- Verify qua browser thật (không chỉ code review): search applicant → score → SPA nav sang
-  Insights giữ được state (React Context, mất khi full reload — đúng thiết kế) → waterfall
-  đúng dữ liệu → History ghi đúng. Cả dark/light theme, cả mobile 375px.
-- **Bug thật đã bắt + sửa lúc verify UI**: label giá trị SHAP trong waterfall dùng nhầm cạnh
-  bar (luôn lấy x2/max thay vì đúng cạnh theo chiều dấu) → label đè lên bar; bar dài (vd
-  "-1.007") label đè lên tên feature dòng bên trái → thêm logic đặt label NẰM TRONG bar khi
-  đủ rộng.
-- `docker-compose.yml` chỉ có `mysql` — backend/frontend chạy dev server trực tiếp
-  (`uvicorn`, `npm run dev`) cho hot-reload nhanh lúc phát triển; Dockerfile cho 2 service
-  này CHƯA viết (không cần thiết cho demo local, có thể thêm nếu cần "1 lệnh chạy hết").
+### `frontend/` — CODED (Block 8)
+- Design direction **"Risk Console"**: Swiss/International grid, dark-luxury base (light-first
+  was considered but dark suits a quant/risk desk aesthetic better), Fraunces (display numbers
+  and headings) + JetBrains Mono (data/labels), bento composition on Insights. OKLCH palette,
+  three semantic risk colours (teal-green / amber / coral-red) kept hue-separate from the gold
+  accent (which is for actions, not status). Both dark and light themes are complete; light is
+  not an afterthought.
+  ScoreGauge displays a 0–40% scale (5x the 8.07% default rate) instead of a linear 0–100%,
+  because most applicants have low PD and a linear scale leaves the gauge nearly empty with no
+  discriminating power. A population-average tick is still shown so the scale isn't misleading.
+  ShapWaterfall is hand-written SVG (no chart library): base_value → each feature →
+  "everything else" (pooled) → result, summing exactly to raw_margin.
+- Verified in a real browser (not just code review): search applicant → score → SPA nav to
+  Insights preserves state (React Context, lost on a full reload, which is by design) →
+  waterfall shows the right data → History records correctly. Both themes, and mobile at 375px.
+- **Real bug caught and fixed during UI verification**: the SHAP value label in the waterfall
+  used the wrong bar edge (always x2/max instead of the edge matching the sign), so labels
+  overlapped the bar; long bars (e.g. "-1.007") pushed the label onto the feature name in the
+  left column. Fixed by placing the label INSIDE the bar when it's wide enough.
+- `docker-compose.yml` only defines `mysql`. Backend and frontend run their dev servers
+  directly (`uvicorn`, `npm run dev`) for fast hot-reload during development; Dockerfiles for
+  those two services are NOT written (unnecessary for a local demo, could be added if a
+  "one command runs everything" setup is ever wanted).
 
 ---
 
-## 8. Design system frontend (Block 8)
+## 7. Frontend design system (Block 8)
 
-Tên hướng: **"Risk Console"**. Tham chiếu tinh thần: fintech data-console nghiêm túc
-(kiểu Bloomberg terminal tinh chỉnh lại), KHÔNG phải dashboard-by-numbers chung chung.
+Direction name: **"Risk Console"**. Spiritual reference: a serious fintech data console
+(a refined Bloomberg terminal), NOT a generic dashboard-by-numbers.
 
-- **Palette** (`frontend/src/styles/tokens.css`, OKLCH): nền ink ấm gần đen (dark) /
-  kem ấm gần trắng (light); accent vàng gold cho action; 3 màu risk semantic tách biệt
-  hue khỏi accent (teal-green thấp / amber trung bình / coral-red cao).
-- **Typography**: Fraunces (serif, số lớn + heading) + JetBrains Mono (data/nhãn kỹ thuật,
-  `tabular-nums`) + system-ui (body, không tính vào giới hạn vì không phải font tải riêng)
-  — đúng giới hạn "tối đa 2 font import" của web/performance.md. Cả 2 load qua Google Fonts
-  CDN (chấp nhận được cho demo local; self-host là việc có thể làm nếu productionize thật).
-- **Component riêng, không dùng chart lib generic**: ScoreGauge (radial arc SVG tay,
-  animate bằng `requestAnimationFrame` + easing), ShapWaterfall (waterfall SVG tay).
-- **Motion**: compositor-friendly (transform/opacity), tôn trọng `prefers-reduced-motion`.
-- Chưa làm: Playwright visual regression theo đúng chuẩn testing.md (KHÔNG có trong scope
-  demo hiện tại — có thể thêm sau nếu cần).
+- **Palette** (`frontend/src/styles/tokens.css`, OKLCH): warm near-black ink background
+  (dark) / warm near-white cream (light); gold accent for actions; three semantic risk colours
+  with hues separated from the accent (teal-green low / amber medium / coral-red high).
+- **Typography**: Fraunces (serif, large numbers + headings) + JetBrains Mono (data and
+  technical labels, `tabular-nums`) + system-ui (body, which doesn't count against the limit
+  since it isn't a downloaded font). Both are loaded from the Google Fonts CDN, acceptable for
+  a local demo; self-hosting is the move if this is ever productionized.
+- **Custom components rather than a generic chart library**: ScoreGauge (hand-written radial
+  arc SVG, animated with `requestAnimationFrame` + easing), ShapWaterfall (hand-written
+  waterfall SVG), CutoffTable, SegmentTable.
+- **Motion**: compositor-friendly only (transform/opacity), respects `prefers-reduced-motion`.
+- Not done: Playwright visual regression (NOT in scope for the current demo, could be added
+  later).

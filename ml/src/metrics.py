@@ -3,7 +3,7 @@ import pandas as pd
 
 
 def _rank_average(x):
-    """Rank 1-based, tie thì lấy rank trung bình (giống scipy.rankdata)."""
+    """1-based ranks; ties get the average rank (same as scipy.rankdata)."""
     x = np.asarray(x, dtype=float)
     sorter = np.argsort(x, kind="mergesort")
     x_sorted = x[sorter]
@@ -33,12 +33,12 @@ def roc_auc(y_true, y_score):
 
 
 def gini(y_true, y_score):
-    """Gini = 2*AUC - 1. Ngôn ngữ chung của dân risk."""
+    """Gini = 2*AUC - 1. The lingua franca of risk teams."""
     return 2.0 * roc_auc(y_true, y_score) - 1.0
 
 
 def ks_statistic(y_true, y_score):
-    """KS = max |TPR - FPR| khi quét threshold từ score cao xuống thấp."""
+    """KS = max |TPR - FPR| sweeping the threshold from high score to low."""
     y_true = np.asarray(y_true, dtype=int)
     order = np.argsort(-np.asarray(y_score, dtype=float), kind="mergesort")
     y = y_true[order]
@@ -49,7 +49,7 @@ def ks_statistic(y_true, y_score):
 
 
 def average_precision(y_true, y_score):
-    """PR-AUC dạng step-sum: AP = sum (R_n - R_{n-1}) * P_n."""
+    """PR-AUC as a step sum: AP = sum (R_n - R_{n-1}) * P_n."""
     y_true = np.asarray(y_true, dtype=int)
     order = np.argsort(-np.asarray(y_score, dtype=float), kind="mergesort")
     y = y_true[order]
@@ -62,7 +62,7 @@ def average_precision(y_true, y_score):
 
 
 def brier_score(y_true, y_prob):
-    """MSE giữa prob và nhãn — đo calibration + sharpness."""
+    """MSE between probability and label. Captures calibration and sharpness."""
     y_true = np.asarray(y_true, dtype=float)
     y_prob = np.asarray(y_prob, dtype=float)
     return float(np.mean((y_prob - y_true) ** 2))
@@ -72,14 +72,14 @@ def expected_calibration_error(y_true, y_prob, n_bins=10, strategy="uniform"):
     """ECE = sum (|bin|/N) * |acc(bin) - conf(bin)|.
 
     `strategy`:
-      "uniform"  - bin rộng bằng nhau trên [0, 1]. Cách hay được report nhất,
-                   NHƯNG dễ gây ảo giác trên bài toán lệch: ở đây 77% prediction
-                   nằm dưới 0.1, nên bin đầu tiên nuốt gần hết dữ liệu và các
-                   sai lệch bên trong nó bị trung bình hoá mất.
-      "quantile" - bin bằng nhau về SỐ LƯỢNG mẫu (equal-frequency). Chặt hơn cho
-                   phân phối lệch vì mọi bin đều có đủ mẫu để so acc vs conf.
+      "uniform"  - equal-width bins over [0, 1]. The most commonly reported form,
+                   BUT misleading on a skewed problem: here 77% of predictions sit
+                   below 0.1, so the first bin swallows most of the data and the
+                   errors inside it average each other out.
+      "quantile" - equal-frequency bins. Stricter on a skewed distribution because
+                   every bin holds enough samples to compare accuracy vs confidence.
 
-    Luôn report cả hai khi kết luận về calibration (xem model_card.md).
+    Report both whenever drawing a conclusion about calibration (see model_card.md).
     """
     y_true = np.asarray(y_true, dtype=float)
     y_prob = np.asarray(y_prob, dtype=float)
@@ -89,10 +89,10 @@ def expected_calibration_error(y_true, y_prob, n_bins=10, strategy="uniform"):
     elif strategy == "quantile":
         edges = np.quantile(y_prob, np.linspace(0.0, 1.0, n_bins + 1))
     else:
-        raise ValueError(f"strategy phải là 'uniform' hoặc 'quantile', nhận {strategy!r}")
+        raise ValueError(f"strategy must be 'uniform' or 'quantile', got {strategy!r}")
 
-    # digitize trên các cạnh TRONG -> index bin 0..n_bins-1; clip cho trường hợp
-    # quantile có cạnh trùng nhau (nhiều giá trị giống hệt).
+    # digitize on the INNER edges -> bin index 0..n_bins-1; clip handles quantile
+    # edges that coincide (many identical values).
     idx = np.clip(np.digitize(y_prob, edges[1:-1], right=False), 0, n_bins - 1)
     N, ece = len(y_prob), 0.0
     for b in range(n_bins):
@@ -110,7 +110,7 @@ def _trapz(y, x):
 
 
 def partial_auc(y_true, y_score, max_fpr=0.2, standardized=True):
-    """pAUC vùng FPR in [0, max_fpr], chuẩn hoá McClish -> [0.5, 1]."""
+    """pAUC over FPR in [0, max_fpr], McClish-standardized to [0.5, 1]."""
     y_true = np.asarray(y_true, dtype=int)
     order = np.argsort(-np.asarray(y_score, dtype=float), kind="mergesort")
     y = y_true[order]
@@ -131,7 +131,7 @@ def partial_auc(y_true, y_score, max_fpr=0.2, standardized=True):
 
 
 def tpr_at_fpr(y_true, y_score, target_fpr=0.1):
-    """Bắt được bao nhiêu % bad khi chấp nhận target_fpr % good bị từ chối oan."""
+    """What share of bads is caught if target_fpr of goods are wrongly rejected."""
     y_true = np.asarray(y_true, dtype=int)
     order = np.argsort(-np.asarray(y_score, dtype=float), kind="mergesort")
     y = y_true[order]
@@ -141,7 +141,7 @@ def tpr_at_fpr(y_true, y_score, target_fpr=0.1):
 
 
 def decile_table(y_true, y_score, n=10):
-    """Bảng gains/decile kiểu risk: lift, capture, KS theo từng decile."""
+    """Risk-style gains table: lift, capture and KS per decile."""
     df = pd.DataFrame({"y": np.asarray(y_true, dtype=int),
                        "p": np.asarray(y_score, dtype=float)})
     df = df.sort_values("p", ascending=False).reset_index(drop=True)

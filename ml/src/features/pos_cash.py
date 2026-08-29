@@ -1,4 +1,4 @@
-"""POS_CASH_balance (lịch sử POS/cash theo tháng) -> 1 dòng/SK_ID_CURR."""
+"""POS_CASH_balance (monthly POS/cash history) -> one row per SK_ID_CURR."""
 from __future__ import annotations
 
 import pandas as pd

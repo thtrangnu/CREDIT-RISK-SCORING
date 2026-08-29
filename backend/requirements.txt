@@ -1,8 +1,8 @@
-# Tầng backend. Cài chồng lên ml/requirements.txt (backend load artifact của ml/
-# nên phải dùng CÙNG bộ version numpy/pandas/sklearn/lightgbm — pickle và
-# model.txt không đảm bảo tương thích ngược qua các major version).
+# Backend layer, installed on top of ml/requirements.txt. The backend loads ml/ artifacts,
+# so it must use the SAME numpy/pandas/sklearn/lightgbm versions: pickles and model.txt are
+# not guaranteed to stay compatible across major versions.
 #
-#   -r ../ml/requirements.txt  giữ 1 nguồn version duy nhất, tránh drift giữa 2 tầng.
+#   -r ../ml/requirements.txt  keeps a single source of versions and prevents drift.
 -r ../ml/requirements.txt
 
 fastapi>=0.115,<1.0
@@ -13,4 +13,4 @@ sqlalchemy>=2.0,<3.0
 pymysql>=1.1,<2.0
 alembic>=1.13,<2.0
 python-multipart>=0.0.9
-httpx>=0.27          # TestClient của FastAPI
+httpx>=0.27          # required by FastAPI TestClient

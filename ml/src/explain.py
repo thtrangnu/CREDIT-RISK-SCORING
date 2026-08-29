@@ -1,17 +1,18 @@
 """Block 6: SHAP explainability — global importance + local reason codes.
 
-Dùng shap.TreeExplainer trên model.txt (không cần Dataset/train lại). Làm việc
-ở margin/log-odds space (mặc định của TreeExplainer với LightGBM binary) —
-sigmoid đơn điệu nên dấu & độ lớn tương đối của SHAP vẫn đúng ý nghĩa "feature
-nào đẩy rủi ro lên/xuống", không cần đổi sang probability space cho mục đích
-reason codes.
+Runs shap.TreeExplainer on model.txt (no Dataset, no retraining). Works in
+margin/log-odds space, which is TreeExplainer's default for LightGBM binary.
+Since the sigmoid is monotonic, the sign and relative magnitude of SHAP values
+still answer "which feature pushed risk up or down", so there is no need to move
+to probability space for reason codes.
 
-QUAN TRỌNG (đã verify bằng tay): `Booster.predict()` trên DataFrame khớp cột
-THEO VỊ TRÍ, không theo tên — đảo thứ tự cột cho ra kết quả khác mà KHÔNG báo
-lỗi. `model.feature_name()` cũng không đáng tin để re-index vì LightGBM tự
-sanitize tên cột có ký tự đặc biệt (dấu cách, ngoặc, ...) khi lưu model.txt.
-=> MỌI nơi dùng model (ở đây và ở backend/scorer.py) đều phải reindex X theo
-đúng thứ tự `feature_names.json` trước khi predict/explain.
+IMPORTANT (verified by hand): `Booster.predict()` on a DataFrame matches columns
+BY POSITION, not by name. Reorder the columns and you get a different result with
+NO error raised. `model.feature_name()` is not reliable for reindexing either,
+because LightGBM sanitizes column names containing special characters (spaces,
+brackets, ...) when saving model.txt.
+=> EVERY place that uses the model (here and in backend/scorer.py) must reindex X
+into the exact order of `feature_names.json` before predicting or explaining.
 """
 from __future__ import annotations
 
@@ -42,11 +43,12 @@ def load_model(artifacts_dir: Path = ARTIFACTS_DIR) -> lgb.Booster:
 
 
 def build_explainer(model: lgb.Booster) -> "shap.TreeExplainer":
-    """Dựng TreeExplainer MỘT LẦN rồi tái dùng.
+    """Build the TreeExplainer ONCE and reuse it.
 
-    Dựng explainer phải duyệt toàn bộ cây (model.txt hiện có ~1400 cây) — đắt
-    hơn nhiều so với chính phép tính SHAP cho 1 dòng. Backend giữ 1 instance
-    suốt vòng đời process (xem backend/app/scorer.py) thay vì dựng lại mỗi request.
+    Constructing an explainer walks every tree (model.txt currently has ~1400),
+    which is far more expensive than the SHAP computation for a single row. The
+    backend holds one instance for the process lifetime (see backend/app/scorer.py)
+    instead of rebuilding it on every request.
     """
     return shap.TreeExplainer(model)
 
@@ -54,10 +56,11 @@ def build_explainer(model: lgb.Booster) -> "shap.TreeExplainer":
 def compute_shap_values(
     model: lgb.Booster, X: pd.DataFrame, explainer: "shap.TreeExplainer | None" = None
 ) -> tuple[np.ndarray, np.ndarray]:
-    """SHAP ở margin space. Trả về (shap_values [n, n_features], base_values [n]).
+    """SHAP in margin space. Returns (shap_values [n, n_features], base_values [n]).
 
-    `explainer`: truyền vào instance đã dựng sẵn để khỏi dựng lại (đường serving).
-    Bỏ trống thì dựng tại chỗ — tiện cho script phân tích chạy 1 lần.
+    `explainer`: pass a prebuilt instance to avoid reconstruction (the serving path).
+    Leave it out and one is built on the spot, which is fine for one-off analysis
+    scripts.
     """
     if explainer is None:
         explainer = build_explainer(model)
@@ -73,11 +76,12 @@ def global_importance(shap_values: np.ndarray, feature_names: list[str]) -> pd.D
 
 
 def explain_applicant(model: lgb.Booster, feature_names: list[str], row: pd.DataFrame, top_k: int = 5) -> dict:
-    """SHAP + reason codes cho ĐÚNG 1 applicant.
+    """SHAP + reason codes for EXACTLY one applicant.
 
-    Tự reindex `row` theo `feature_names` trước khi predict/explain — KHÔNG tin
-    thứ tự cột của `row` do caller truyền vào, vì Booster khớp cột theo vị trí
-    (xem docstring đầu file). Đây là validate-tại-biên, chặn cả lớp bug skew.
+    Reindexes `row` by `feature_names` before predicting or explaining. The caller's
+    column order is never trusted, because Booster matches columns positionally (see
+    the module docstring). This is validation at the boundary and it blocks a whole
+    class of skew bugs.
     """
     row = row[feature_names]
     shap_values, base_values = compute_shap_values(model, row)
@@ -96,34 +100,34 @@ def main() -> None:
     sample = df.iloc[sample_idx]
     X_sample = sample[feature_names]
 
-    print(f"Tính SHAP cho {len(X_sample)} dòng mẫu ({len(feature_names)} feature)...")
+    print(f"Computing SHAP for {len(X_sample)} sampled rows ({len(feature_names)} features)...")
     shap_values, _ = compute_shap_values(model, X_sample)
 
     importance = global_importance(shap_values, feature_names)
-    print("\n=== TOP 20 feature quan trọng nhất (SHAP global mean|value|) ===")
+    print("\n=== TOP 20 most important features (global mean|SHAP|) ===")
     print(importance.head(20).to_string(index=False))
 
     with open(FEATURES_CONFIG_PATH) as f:
         declared = yaml.safe_load(f).get("monotone_constraints", {})
     top30 = set(importance.head(30)["feature"])
     overlap = top30 & set(declared)
-    print(f"\nOverlap top-30 SHAP vs {len(declared)} feature có monotonic constraint (Block 3): "
-          f"{len(overlap)} feature -> {sorted(overlap)}")
+    print(f"\nOverlap between top-30 SHAP and the {len(declared)} monotonic-constrained features (Block 3): "
+          f"{len(overlap)} -> {sorted(overlap)}")
 
     ARTIFACTS_DIR.mkdir(exist_ok=True)
     importance.to_csv(ARTIFACTS_DIR / "shap_global_importance.csv", index=False)
     print(f"\nSaved -> {ARTIFACTS_DIR / 'shap_global_importance.csv'}")
 
-    print("\n=== Demo reason codes: 3 applicant rủi ro cao nhất trong mẫu ===")
+    print("\n=== Reason code demo: the 3 riskiest applicants in the sample ===")
     raw_pred = model.predict(X_sample, raw_score=True)
     top_risk_pos = np.argsort(-raw_pred)[:3]
     for pos in top_risk_pos:
         sk_id = int(sample.iloc[pos]["SK_ID_CURR"])
         actual = int(sample.iloc[pos]["TARGET"]) if "TARGET" in sample.columns else None
         reasons = build_reason_codes(feature_names, shap_values[pos], X_sample.iloc[pos].values, top_k=5)
-        print(f"\nSK_ID_CURR={sk_id}  raw_margin={raw_pred[pos]:.3f}  TARGET thật={actual}")
+        print(f"\nSK_ID_CURR={sk_id}  raw_margin={raw_pred[pos]:.3f}  actual TARGET={actual}")
         for r in reasons:
-            flag = "" if r["curated"] else "  [fallback, cần pháp chế review]"
+            flag = "" if r["curated"] else "  [fallback, needs legal review]"
             print(f"  - {r['label']}: {r['direction']} (shap={r['shap']:+.3f}){flag}")
 
 

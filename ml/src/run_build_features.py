@@ -1,6 +1,6 @@
-"""Entry point AN TOÀN để build feature artifact — xem ghi chú ở cuối
-ml/src/features/build.py. File này CHỈ import main() (không định nghĩa class
-nào), nên build.py luôn được nạp như module bình thường, không phải __main__.
+"""SAFE entry point for building the feature artifact. See the note at the end of
+ml/src/features/build.py. This file ONLY imports main() and defines no classes, so
+build.py is always loaded as a normal module rather than as __main__.
 """
 from ml.src.features.build import main
 

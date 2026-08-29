@@ -1,8 +1,8 @@
-"""Block 2+3: retrain OOF trên feature engineering đa bảng + monotonic constraints.
+"""Blocks 2+3: retrain OOF on multi-table engineered features + monotonic constraints.
 
-So sánh trực tiếp với baseline (train.py) trên CÙNG fold split (cùng seed, cùng
-n_folds, cùng thứ tự dòng application_train.csv) để đo đúng phần lift đến từ
-feature engineering, không lẫn với random fold khác nhau.
+Compared directly against the baseline (train.py) on the SAME fold split (same seed,
+same n_folds, same row order in application_train.csv) so the measured lift comes from
+feature engineering rather than from a different random fold assignment.
 """
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ def load_config(path: Path) -> dict:
 
 
 def load_engineered_features() -> pd.DataFrame:
-    """Dùng cache parquet nếu có (build.py đã chạy trước) để đỡ build lại ~50s."""
+    """Use the cached parquet if present (build.py already ran) to skip a ~50s rebuild."""
     if CACHED_FEATURES_PATH.exists():
         return pd.read_parquet(CACHED_FEATURES_PATH)
     _, flat = build_features()
@@ -40,10 +40,11 @@ def load_engineered_features() -> pd.DataFrame:
 
 
 def build_monotone_constraints(columns: list[str], cat_cols: set[str], declared: dict[str, int]) -> list[int]:
-    """Map features.yaml -> mảng constraint đúng thứ tự cột X.
+    """Map features.yaml onto a constraint array matching X's column order.
 
-    Feature categorical KHÔNG được nhận constraint (LightGBM chỉ áp monotonic cho
-    split số/ordinal) — nếu yaml lỡ khai báo nhầm 1 cột categorical, bỏ qua an toàn.
+    Categorical features must NOT carry a constraint (LightGBM only applies monotonic
+    behaviour to numeric/ordinal splits), so a constraint mistakenly declared for a
+    categorical column is silently dropped to 0.
     """
     constraints = []
     for c in columns:
@@ -90,11 +91,12 @@ def main() -> None:
     oof = np.zeros(len(X))
     skf = StratifiedKFold(n_folds, shuffle=True, random_state=seed)
     for fold, (tr, va) in enumerate(skf.split(X, y), 1):
-        # HẠN CHẾ ĐÃ BIẾT (xem model_card.md mục 6): `dva` vừa là valid_set để
-        # early stopping, vừa là fold để lấy oof[va]. Số vòng lặp vì thế được chọn
-        # BẰNG chính dữ liệu nó sắp dự đoán -> OOF lạc quan nhẹ, không hoàn toàn
-        # sạch. Giữ nguyên có ý thức: baseline và engineered lệch y hệt nhau nên
-        # delta vẫn công bằng. Muốn OOF sạch thì tách 1 inner split từ `tr`.
+        # KNOWN LIMITATION (see model_card.md section 6): `dva` is both the
+        # valid_set driving early stopping and the fold supplying oof[va]. The
+        # iteration count is therefore chosen USING the very data it is about to
+        # predict -> mildly optimistic OOF, not a fully clean estimate. Kept
+        # deliberately: baseline and engineered are biased identically so the delta
+        # stays fair. For a clean OOF, carve an inner split out of `tr`.
         dtr = lgb.Dataset(X.iloc[tr], y[tr], categorical_feature=cat_cols)
         dva = lgb.Dataset(X.iloc[va], y[va], reference=dtr)
         model = lgb.train(
@@ -128,9 +130,9 @@ def main() -> None:
             print(f"AUC  baseline={auc_baseline:.5f}  engineered={auc_engineered:.5f}  "
                   f"delta={auc_engineered - auc_baseline:+.5f}")
         else:
-            print("\n[!] oof_baseline.npy có độ dài khác — bỏ qua so sánh delta.")
+            print("\n[!] oof_baseline.npy has a different length; skipping the delta comparison.")
     else:
-        print("\n[!] Chưa có ml/artifacts/oof_baseline.npy — chạy `python -m ml.src.train` trước để so sánh.")
+        print("\n[!] No ml/artifacts/oof_baseline.npy yet; run `python -m ml.src.train` first to compare.")
 
     ARTIFACTS_DIR.mkdir(exist_ok=True)
     np.save(ARTIFACTS_DIR / "oof_engineered.npy", oof)

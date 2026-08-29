@@ -1,11 +1,11 @@
-"""installments_payments (grain mịn nhất — từng lần trả) -> 1 dòng/SK_ID_CURR.
+"""installments_payments (finest grain, one row per payment) -> one row per SK_ID_CURR.
 
-Thêm 2 cột derived ở mức dòng TRƯỚC khi agg (bắt buộc phải làm ở đây vì đây là
-tín hiệu hành vi trả nợ quan trọng nhất — agg riêng AMT_INSTALMENT/AMT_PAYMENT
-hay DAYS_INSTALMENT/DAYS_ENTRY_PAYMENT không tái tạo lại được độ trễ/thiếu hụt
-của từng lần trả cụ thể):
-  DAYS_LATE     = DAYS_ENTRY_PAYMENT - DAYS_INSTALMENT   (>0 = trả trễ)
-  PAYMENT_DIFF  = AMT_INSTALMENT - AMT_PAYMENT           (>0 = trả thiếu)
+Two derived columns are added at ROW level BEFORE aggregating. This has to happen here:
+these are the strongest repayment-behaviour signals, and aggregating AMT_INSTALMENT /
+AMT_PAYMENT or DAYS_INSTALMENT / DAYS_ENTRY_PAYMENT separately cannot reconstruct the
+lateness or shortfall of any individual payment.
+  DAYS_LATE     = DAYS_ENTRY_PAYMENT - DAYS_INSTALMENT   (>0 = paid late)
+  PAYMENT_DIFF  = AMT_INSTALMENT - AMT_PAYMENT           (>0 = underpaid)
 """
 from __future__ import annotations
 

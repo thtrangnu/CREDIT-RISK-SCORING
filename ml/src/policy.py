@@ -1,16 +1,16 @@
-"""Block 9: dịch điểm số sang QUYẾT ĐỊNH — cutoff policy + đối chiếu phân khúc.
+"""Block 9: turning the score into a DECISION — cutoff policy + segment comparison.
 
-Vì sao cần block này: AUC/ECE trả lời "model xếp hạng tốt cỡ nào", KHÔNG trả
-lời "dùng nó thì được gì". Trong lending, câu hỏi thật sự là: ở một tỉ lệ
-duyệt cho trước, tỉ lệ vỡ nợ trong nhóm được duyệt giảm bao nhiêu — đó mới là
-con số nói chuyện được với business.
+Why this block exists: AUC and ECE answer "how well does the model rank", not "what do
+we get by using it". In lending the real question is: at a given approval rate, how much
+does the default rate among approved applicants drop? That is the number you can take to
+the business.
 
-Mọi con số ở đây tính trên OOF ĐÃ HIỆU CHỈNH (nested isotonic), không phải
-in-sample: mỗi applicant được chấm bởi model KHÔNG nhìn thấy nó lúc train, và
-được hiệu chỉnh bởi calibrator KHÔNG nhìn thấy label của nó (xem calibrate.py).
+Every figure here is computed on CALIBRATED OOF predictions, not in-sample: each applicant
+is scored by a model that never saw it during training, and calibrated by a model that
+never saw its label (see calibrate.py).
 
-Phân khúc (`segment_report`) đứng ở đây chứ không ở metrics.py vì nó là câu hỏi
-CHÍNH SÁCH (ai bị ảnh hưởng thế nào), không phải một metric thống kê thuần.
+Segments (`segment_report`) live here rather than in metrics.py because they answer a
+POLICY question (who is affected and how), not a purely statistical one.
 """
 from __future__ import annotations
 
@@ -19,29 +19,28 @@ import pandas as pd
 
 from .metrics import roc_auc
 
-# Tỉ lệ duyệt để quét. Không phải khuyến nghị — là dải để đọc trade-off.
+# Approval rates to sweep. Not a recommendation, just a range for reading the trade-off.
 DEFAULT_APPROVAL_RATES = (0.5, 0.6, 0.7, 0.8, 0.9, 1.0)
 
-# Ngưỡng tham chiếu dùng cho báo cáo phân khúc. 0.7 = duyệt 70% hồ sơ tốt nhất.
+# Reference threshold used for segment reporting. 0.7 = approve the best 70% of applicants.
 REFERENCE_APPROVAL_RATE = 0.7
 
-# Ngưỡng "4/5ths rule" (EEOC): tỉ lệ duyệt của nhóm bất lợi nhất / nhóm thuận
-# lợi nhất < 0.8 là dấu hiệu adverse impact cần điều tra.
+# EEOC "4/5ths rule": if the least-favoured group's approval rate divided by the most-favoured
+# group's falls below 0.8, that is a sign of adverse impact worth investigating.
 ADVERSE_IMPACT_THRESHOLD = 0.8
 
 
 def approve_mask(pd_score: np.ndarray, approval_rate: float) -> np.ndarray:
-    """Duyệt `approval_rate` phần hồ sơ có PD THẤP nhất.
+    """Approve the `approval_rate` share of applicants with the LOWEST PD.
 
-    Cắt theo phân vị thay vì theo một ngưỡng PD tuyệt đối: giữ tỉ lệ duyệt cố
-    định là cách so sánh công bằng giữa các model/phiên bản, và cũng gần với
-    cách bộ phận risk vận hành thật (định mức volume trước, suy ra cutoff sau).
+    Cuts by quantile rather than by an absolute PD threshold. Holding the approval rate
+    fixed is the fair way to compare models or versions, and it is closer to how a risk
+    team actually operates (set the volume target first, derive the cutoff from it).
     """
     if not 0.0 < approval_rate <= 1.0:
-        raise ValueError(f"approval_rate phải trong (0, 1], nhận {approval_rate}")
+        raise ValueError(f"approval_rate must be in (0, 1], got {approval_rate}")
     if approval_rate == 1.0:
         return np.ones(len(pd_score), dtype=bool)
-    cutoff = float(np.quantile(pd_score, approval_rate))
     order = np.argsort(pd_score, kind="mergesort")
     k = int(round(len(pd_score) * approval_rate))
     mask = np.zeros(len(pd_score), dtype=bool)
@@ -52,7 +51,7 @@ def approve_mask(pd_score: np.ndarray, approval_rate: float) -> np.ndarray:
 def cutoff_table(
     y_true, pd_score, approval_rates: tuple[float, ...] = DEFAULT_APPROVAL_RATES
 ) -> pd.DataFrame:
-    """Bảng trade-off: duyệt bao nhiêu <-> vỡ nợ bao nhiêu <-> chặn được bao nhiêu bad."""
+    """Trade-off table: how much you approve vs how much defaults vs how many bads you block."""
     y = np.asarray(y_true, dtype=int)
     p = np.asarray(pd_score, dtype=float)
     base_rate = float(y.mean())
@@ -69,12 +68,14 @@ def cutoff_table(
             "n_approved": n_approved,
             "pd_cutoff": float(p[mask].max()) if n_approved else float("nan"),
             "bad_rate_approved": bad_rate_approved,
-            # Giảm bao nhiêu % tỉ lệ vỡ nợ so với "duyệt tất" — con số kể chuyện.
+            # How much the default rate drops versus approving everyone. This is the
+            # figure that tells the story.
             "bad_rate_reduction": 1.0 - bad_rate_approved / base_rate,
-            # % tổng số ca vỡ nợ bị chặn lại ở cửa.
+            # Share of all defaults that get stopped at the door.
             "bad_captured": (total_bad - bad_approved) / total_bad if total_bad else float("nan"),
-            # Tổn thất kỳ vọng tương đối (giả định loss ~ số ca vỡ nợ được duyệt,
-            # cùng exposure mỗi khoản). Chuẩn hoá về 1.0 = duyệt tất.
+            # Relative expected loss, assuming loss scales with the number of approved
+            # defaults and every loan carries the same exposure. Normalized so
+            # 1.0 = approve everyone.
             "expected_loss_index": bad_approved / total_bad if total_bad else float("nan"),
         })
     return pd.DataFrame(rows)
@@ -83,12 +84,12 @@ def cutoff_table(
 def segment_report(
     y_true, pd_score, groups, approval_rate: float = REFERENCE_APPROVAL_RATE
 ) -> pd.DataFrame:
-    """Chất lượng model + tác động chính sách theo từng phân khúc.
+    """Model quality and policy impact per segment.
 
-    Cột đọc thế nào:
-      bad_rate / mean_pd  lệch nhau nhiều  -> model calibrate lệch cho nhóm đó
-      auc                 thấp hơn hẳn     -> model phân biệt kém trên nhóm đó
-      approval_rate       chênh nhau nhiều -> tác động chính sách không đồng đều
+    How to read the columns:
+      bad_rate vs mean_pd far apart -> the model is miscalibrated for that group
+      auc noticeably lower          -> the model discriminates poorly on that group
+      approval_rate far apart       -> the policy affects groups unevenly
     """
     y = np.asarray(y_true, dtype=int)
     p = np.asarray(pd_score, dtype=float)
@@ -97,7 +98,7 @@ def segment_report(
     df = pd.DataFrame({"y": y, "p": p, "approved": approved, "group": np.asarray(groups)})
     rows = []
     for name, sub in df.groupby("group", dropna=False):
-        # AUC vô nghĩa nếu nhóm chỉ có 1 lớp; báo NaN thay vì con số giả.
+        # AUC is meaningless for a single-class group; report NaN rather than a fake number.
         has_both = 0 < sub["y"].sum() < len(sub)
         rows.append({
             "group": name,
@@ -112,10 +113,11 @@ def segment_report(
 
 
 def adverse_impact_ratio(segments: pd.DataFrame, min_group_size: int = 1000) -> float:
-    """min(approval_rate) / max(approval_rate) theo "4/5ths rule" của EEOC.
+    """min(approval_rate) / max(approval_rate), the EEOC "4/5ths rule".
 
-    Bỏ qua nhóm quá nhỏ (mặc định <1000) — vài chục dòng không đủ để kết luận
-    gì, mà lại kéo tỉ số xuống bằng nhiễu (vd CODE_GENDER='XNA' chỉ có 4 dòng).
+    Groups that are too small (under 1000 by default) are skipped. A few dozen rows cannot
+    support a conclusion, but they can drag the ratio down through pure noise (for example
+    CODE_GENDER='XNA', which has 4 rows).
     """
     big = segments[segments["n"] >= min_group_size]
     if len(big) < 2:
@@ -124,10 +126,10 @@ def adverse_impact_ratio(segments: pd.DataFrame, min_group_size: int = 1000) -> 
 
 
 def age_bands(days_birth) -> np.ndarray:
-    """DAYS_BIRTH (âm, tính từ ngày nộp đơn) -> nhãn nhóm tuổi.
+    """DAYS_BIRTH (negative, counted back from the application date) -> age band labels.
 
-    Tuổi cũng là thuộc tính được bảo vệ trong tín dụng (ECOA), nên nó cần có
-    trong báo cáo phân khúc chứ không chỉ giới tính.
+    Age is also a protected attribute in lending (ECOA), so it belongs in the segment
+    report alongside gender rather than gender alone.
     """
     years = -np.asarray(days_birth, dtype=float) / 365.25
     bins = [0, 25, 35, 45, 55, 65, 200]
