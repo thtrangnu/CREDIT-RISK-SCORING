@@ -1,0 +1,68 @@
+.cutoff-table__scroll {
+  overflow-x: auto;
+}
+
+.cutoff-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.cutoff-table__caption {
+  caption-side: bottom;
+  text-align: left;
+  padding-top: var(--space-4);
+  color: var(--color-text-faint);
+  font-size: var(--text-xs);
+}
+
+.cutoff-table thead th {
+  text-align: left;
+  padding: var(--space-3) var(--space-4);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-faint);
+  border-bottom: 1px solid var(--color-border-strong);
+  white-space: nowrap;
+}
+
+.cutoff-table tbody tr {
+  border-bottom: 1px solid var(--color-border);
+  animation: row-in var(--duration-normal) var(--ease-out-expo) both;
+  animation-delay: calc(var(--stagger) * 40ms);
+}
+
+.cutoff-table tbody th,
+.cutoff-table tbody td {
+  padding: var(--space-3) var(--space-4);
+  text-align: left;
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+/* Dòng tham chiếu: nền + viền trái accent, không đổi màu chữ (giữ tương phản). */
+.cutoff-table tbody tr.is-reference {
+  background: color-mix(in oklch, var(--color-accent) 10%, transparent);
+  box-shadow: inset 3px 0 0 var(--color-accent);
+}
+
+.cutoff-table__ref-tag {
+  margin-left: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+}
+
+.cutoff-table__gain {
+  color: var(--color-risk-low);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cutoff-table tbody tr {
+    animation: none;
+  }
+}

@@ -1,0 +1,108 @@
+.score-page__hero {
+  padding-block: var(--space-section) var(--space-8);
+  max-width: 760px;
+}
+
+.score-page__title {
+  font-size: var(--text-2xl);
+  margin-block: var(--space-4) var(--space-4);
+}
+
+.score-page__title-accent {
+  color: var(--color-accent);
+  font-style: italic;
+}
+
+.score-page__subtitle {
+  color: var(--color-text-muted);
+  font-size: var(--text-lg);
+  margin-bottom: var(--space-8);
+  max-width: 60ch;
+}
+
+.score-page__error {
+  color: var(--color-risk-high);
+  padding: var(--space-4);
+  background: color-mix(in oklch, var(--color-risk-high) 12%, transparent);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-4);
+}
+
+.score-page__hint {
+  color: var(--color-text-faint);
+  padding-block: var(--space-8);
+}
+
+.score-page__result {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(340px, 1.3fr);
+  gap: var(--space-6);
+  padding-bottom: var(--space-section);
+  align-items: start;
+}
+
+.score-page__gauge-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-block: var(--space-8);
+  position: sticky;
+  top: calc(72px + var(--space-6));
+}
+
+.score-page__gauge-footer {
+  margin-top: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.score-page__actual {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+.score-page__actual .is-default {
+  color: var(--color-risk-high);
+}
+
+.score-page__actual .is-safe {
+  color: var(--color-risk-low);
+}
+
+.score-page__applicant-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.score-page__applicant-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-4);
+}
+
+.score-page__applicant-grid dt {
+  font-size: var(--text-xs);
+  color: var(--color-text-faint);
+  margin-bottom: 2px;
+}
+
+.score-page__applicant-grid dd {
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.score-page__insights-link {
+  align-self: flex-start;
+}
+
+@media (max-width: 860px) {
+  .score-page__result {
+    grid-template-columns: 1fr;
+  }
+  .score-page__gauge-card {
+    position: static;
+  }
+}

@@ -1,0 +1,75 @@
+.segment-table__block + .segment-table__block {
+  margin-top: var(--space-8);
+}
+
+.segment-table__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-4);
+}
+
+.segment-table__title {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.segment-table__scroll {
+  overflow-x: auto;
+}
+
+.segment-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.segment-table thead th {
+  text-align: left;
+  padding: var(--space-3) var(--space-4);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-faint);
+  border-bottom: 1px solid var(--color-border-strong);
+  white-space: nowrap;
+}
+
+.segment-table tbody tr {
+  border-bottom: 1px solid var(--color-border);
+  animation: row-in var(--duration-normal) var(--ease-out-expo) both;
+  animation-delay: calc(var(--stagger) * 40ms);
+}
+
+.segment-table tbody th,
+.segment-table tbody td {
+  padding: var(--space-3) var(--space-4);
+  text-align: left;
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.segment-table tbody tr.is-small {
+  color: var(--color-text-faint);
+}
+
+.segment-table__note {
+  margin-left: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-faint);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .segment-table tbody tr {
+    animation: none;
+  }
+}

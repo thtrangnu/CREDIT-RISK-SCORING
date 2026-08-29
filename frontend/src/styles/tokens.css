@@ -1,0 +1,140 @@
+/* Risk Console — Swiss grid discipline + dark-luxury surface + editorial type.
+   Dark là hướng thiết kế CHỦ ĐỘNG cho 1 công cụ risk/quant (không phải mặc định lười).
+   Light theme vẫn đầy đủ, chọn qua [data-theme="light"] hoặc prefers-color-scheme. */
+
+:root {
+  color-scheme: dark;
+
+  /* --- Surface --- */
+  --color-bg: oklch(15% 0.012 265);
+  --color-bg-elevated: oklch(19% 0.014 265);
+  --color-bg-elevated-2: oklch(23.5% 0.016 265);
+  --color-border: oklch(31% 0.016 265);
+  --color-border-strong: oklch(40% 0.018 265);
+
+  /* --- Text --- */
+  --color-text: oklch(95% 0.006 265);
+  --color-text-muted: oklch(73% 0.012 265);
+  --color-text-faint: oklch(54% 0.012 265);
+
+  /* --- Brand accent (thao tác, liên kết, focus) --- */
+  --color-accent: oklch(78% 0.15 85);
+  --color-accent-strong: oklch(84% 0.16 85);
+  --color-accent-ink: oklch(18% 0.03 85);
+
+  /* --- Risk semantics (badge/chart — KHÔNG dùng cho action) --- */
+  --color-risk-low: oklch(72% 0.14 162);
+  --color-risk-low-ink: oklch(16% 0.03 162);
+  --color-risk-medium: oklch(80% 0.16 70);
+  --color-risk-medium-ink: oklch(18% 0.035 70);
+  --color-risk-high: oklch(64% 0.19 25);
+  --color-risk-high-ink: oklch(97% 0.01 25);
+
+  /* --- SHAP direction (tăng/giảm rủi ro) --- */
+  --color-shap-positive: var(--color-risk-high);
+  --color-shap-negative: var(--color-risk-low);
+
+  /* --- Typography --- */
+  --font-display: 'Fraunces', ui-serif, Georgia, serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif;
+
+  --text-xs: clamp(0.72rem, 0.7rem + 0.1vw, 0.78rem);
+  --text-sm: clamp(0.85rem, 0.82rem + 0.15vw, 0.92rem);
+  --text-base: clamp(1rem, 0.95rem + 0.2vw, 1.05rem);
+  --text-lg: clamp(1.15rem, 1.05rem + 0.4vw, 1.3rem);
+  --text-xl: clamp(1.4rem, 1.2rem + 0.8vw, 1.75rem);
+  --text-2xl: clamp(1.8rem, 1.4rem + 1.5vw, 2.4rem);
+  --text-hero: clamp(3.2rem, 2rem + 5vw, 6rem);
+
+  /* --- Spacing --- */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+  --space-section: clamp(3rem, 2rem + 4vw, 6rem);
+
+  /* --- Radius --- */
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --radius-full: 999px;
+
+  /* --- Motion --- */
+  --duration-fast: 150ms;
+  --duration-normal: 320ms;
+  --duration-slow: 600ms;
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* --- Elevation --- */
+  --shadow-sm: 0 1px 2px oklch(0% 0 0 / 0.3);
+  --shadow-md: 0 8px 24px -8px oklch(0% 0 0 / 0.5);
+  --shadow-lg: 0 24px 48px -16px oklch(0% 0 0 / 0.6);
+  --shadow-accent-glow: 0 0 0 1px oklch(78% 0.15 85 / 0.25), 0 8px 32px -8px oklch(78% 0.15 85 / 0.35);
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']) {
+    color-scheme: light;
+
+    --color-bg: oklch(98% 0.005 95);
+    --color-bg-elevated: oklch(100% 0 0);
+    --color-bg-elevated-2: oklch(95.5% 0.008 95);
+    --color-border: oklch(89% 0.01 95);
+    --color-border-strong: oklch(78% 0.014 95);
+
+    --color-text: oklch(21% 0.012 265);
+    --color-text-muted: oklch(42% 0.014 265);
+    --color-text-faint: oklch(58% 0.012 265);
+
+    --color-accent: oklch(52% 0.15 75);
+    --color-accent-strong: oklch(44% 0.16 75);
+    --color-accent-ink: oklch(99% 0.01 85);
+
+    --color-risk-low: oklch(46% 0.13 162);
+    --color-risk-low-ink: oklch(98% 0.01 162);
+    --color-risk-medium: oklch(52% 0.17 65);
+    --color-risk-medium-ink: oklch(98% 0.01 70);
+    --color-risk-high: oklch(50% 0.19 25);
+    --color-risk-high-ink: oklch(98% 0.01 25);
+
+    --shadow-sm: 0 1px 2px oklch(0% 0 0 / 0.06);
+    --shadow-md: 0 8px 24px -8px oklch(0% 0 0 / 0.12);
+    --shadow-lg: 0 24px 48px -16px oklch(0% 0 0 / 0.16);
+    --shadow-accent-glow: 0 0 0 1px oklch(52% 0.15 75 / 0.2), 0 8px 32px -8px oklch(52% 0.15 75 / 0.25);
+  }
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --color-bg: oklch(98% 0.005 95);
+  --color-bg-elevated: oklch(100% 0 0);
+  --color-bg-elevated-2: oklch(95.5% 0.008 95);
+  --color-border: oklch(89% 0.01 95);
+  --color-border-strong: oklch(78% 0.014 95);
+
+  --color-text: oklch(21% 0.012 265);
+  --color-text-muted: oklch(42% 0.014 265);
+  --color-text-faint: oklch(58% 0.012 265);
+
+  --color-accent: oklch(52% 0.15 75);
+  --color-accent-strong: oklch(44% 0.16 75);
+  --color-accent-ink: oklch(99% 0.01 85);
+
+  --color-risk-low: oklch(46% 0.13 162);
+  --color-risk-low-ink: oklch(98% 0.01 162);
+  --color-risk-medium: oklch(52% 0.17 65);
+  --color-risk-medium-ink: oklch(98% 0.01 70);
+  --color-risk-high: oklch(50% 0.19 25);
+  --color-risk-high-ink: oklch(98% 0.01 25);
+
+  --shadow-sm: 0 1px 2px oklch(0% 0 0 / 0.06);
+  --shadow-md: 0 8px 24px -8px oklch(0% 0 0 / 0.12);
+  --shadow-lg: 0 24px 48px -16px oklch(0% 0 0 / 0.16);
+  --shadow-accent-glow: 0 0 0 1px oklch(52% 0.15 75 / 0.2), 0 8px 32px -8px oklch(52% 0.15 75 / 0.25);
+}
